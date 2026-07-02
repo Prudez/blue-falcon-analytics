@@ -9,11 +9,18 @@ import { contract } from "../../shared/contract.js";
 
 const API_URL = import.meta.env.VITE_API_URL;
 
-export async function getHealth() {
-  const res = await fetch(`${API_URL}${contract.health.path}`);
+// All contract endpoints are GETs with no request payload so far; one helper
+// covers them. Revisit when the contract grows params or bodies.
+async function getJson(endpoint) {
+  const res = await fetch(`${API_URL}${endpoint.path}`);
   const body = await res.json();
   if (!res.ok) {
-    throw new Error(body.message ?? "Health check failed");
+    throw new Error(body.message ?? `GET ${endpoint.path} failed`);
   }
-  return contract.health.response.parse(body);
+  return endpoint.response.parse(body);
 }
+
+export const getHealth = () => getJson(contract.health);
+export const getKpiSummary = () => getJson(contract.kpiSummary);
+export const getListingsByStatus = () => getJson(contract.listingsByStatus);
+export const getListingsByLocation = () => getJson(contract.listingsByLocation);

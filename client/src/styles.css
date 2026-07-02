@@ -1,0 +1,227 @@
+/* Blue Falcon Analytics — brand styles.
+   Deep navy primary on a light off-white background, white cards with
+   subtle borders and soft shadows. Chart palette: navy, teal, amber,
+   muted purple (see --chart-*). */
+
+:root {
+  --navy: #16294d;
+  --navy-dark: #0f1d38;
+  --navy-soft: #24406e;
+  --bg: #f6f7f9;
+  --card-bg: #ffffff;
+  --card-border: #e3e6ec;
+  --text: #171a20;
+  --text-muted: #647082;
+  --positive: #1e8e5a;
+  --negative: #c43d3d;
+  --chart-navy: #1f3a68;
+  --chart-teal: #2a9d8f;
+  --chart-amber: #e5a83b;
+  --chart-purple: #8a7aa8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ---- Sidebar ---- */
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--navy);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 12px;
+}
+
+.sidebar .brand {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  padding: 4px 12px 20px;
+}
+
+.sidebar .brand span {
+  color: #8fb4e8;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #c3cde0;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background: var(--navy-soft);
+  color: #fff;
+}
+
+.nav-item.active {
+  background: var(--navy-soft);
+  color: #fff;
+  font-weight: 600;
+}
+
+.sidebar .backend-status {
+  margin-top: auto;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #8f9cb5;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8f9cb5;
+}
+
+.status-dot.ok {
+  background: #35c07e;
+}
+
+.status-dot.down {
+  background: #e05b5b;
+}
+
+/* ---- Main column ---- */
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--card-border);
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.header .controls {
+  display: flex;
+  gap: 10px;
+}
+
+.control {
+  padding: 7px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: not-allowed;
+}
+
+.content {
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ---- Cards ---- */
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(22, 41, 77, 0.06);
+  padding: 18px 20px;
+}
+
+.card h2 {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 20px;
+}
+
+.kpi-card .kpi-value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.kpi-card .kpi-label {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.chart-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+.chart-card {
+  min-height: 320px;
+}
+
+.placeholder-page {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.error-banner {
+  background: #fbeaea;
+  border: 1px solid #efc6c6;
+  color: var(--negative);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+.loading {
+  color: var(--text-muted);
+  font-size: 14px;
+}
