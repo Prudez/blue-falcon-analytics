@@ -1,0 +1,15 @@
+{
+  "name": "blue-falcon-analytics",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev -w server\" \"npm run dev -w client\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
