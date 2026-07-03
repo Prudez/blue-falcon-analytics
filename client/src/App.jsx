@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import { getHealth } from "./api.js";
 import Overview from "./pages/Overview.jsx";
 import Sales from "./pages/Sales.jsx";
+import Listings from "./pages/Listings.jsx";
 
-// Marketing and Listings arrive in later phases; their nav items exist now
-// so the shell is complete, and route to a placeholder.
+// Marketing arrives in Phase 3; its nav item exists now so the shell is
+// complete, and routes to a placeholder.
 const PAGES = [
   { key: "overview", label: "Overview", phase: null },
   { key: "sales", label: "Sales", phase: null },
   { key: "marketing", label: "Marketing", phase: 3 },
-  { key: "listings", label: "Listings", phase: 5 },
+  { key: "listings", label: "Listings", phase: null },
 ];
 
 function PlaceholderPage({ label, phase }) {
@@ -72,6 +73,8 @@ export default function App() {
             <Overview />
           ) : page === "sales" ? (
             <Sales />
+          ) : page === "listings" ? (
+            <Listings />
           ) : (
             <PlaceholderPage label={current.label} phase={current.phase} />
           )}

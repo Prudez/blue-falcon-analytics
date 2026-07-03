@@ -268,6 +268,36 @@ body {
   color: var(--text-muted);
 }
 
+.card-hint {
+  margin: -8px 0 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.table-select,
+.table-input {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+}
+
+.table-input {
+  width: 130px;
+}
+
+.table-select:disabled,
+.table-input:disabled {
+  opacity: 0.6;
+}
+
+.row-saving {
+  opacity: 0.6;
+}
+
 .stage-pill {
   display: inline-block;
   padding: 3px 10px;

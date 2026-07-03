@@ -40,14 +40,29 @@ app.get(contract.health.path, async (req, res) => {
 
 // Wraps a route so every failure returns the contract's error shape with a
 // stable machine-readable code, and success bodies are validated against the
-// endpoint's response schema before they leave the process.
+// endpoint's response schema before they leave the process. Non-GET requests
+// have their body validated against the endpoint's request schema first; a
+// bad body is the client's fault and returns 400, not 503.
 function contractRoute(endpoint, errorCode, handler) {
-  app.get(endpoint.path, async (req, res) => {
+  const method = endpoint.method.toLowerCase();
+  app[method](endpoint.path, async (req, res) => {
+    let input = {};
+    if (method !== "get") {
+      const parsed = endpoint.request.safeParse(req.body);
+      if (!parsed.success) {
+        const body = ErrorResponse.parse({
+          error: "invalid_request",
+          message: parsed.error.issues.map((i) => i.message).join("; "),
+        });
+        return res.status(400).json(body);
+      }
+      input = parsed.data;
+    }
     try {
-      const body = endpoint.response.parse(await handler(req));
+      const body = endpoint.response.parse(await handler(req, input));
       res.json(body);
     } catch (err) {
-      console.error(`GET ${endpoint.path} failed:`, err.message);
+      console.error(`${endpoint.method} ${endpoint.path} failed:`, err.message);
       const body = ErrorResponse.parse({
         error: errorCode,
         message: "Query failed. Check the server log.",
@@ -56,6 +71,63 @@ function contractRoute(endpoint, errorCode, handler) {
     }
   });
 }
+
+// Maps a properties row to the contract's Property shape.
+function toProperty(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    location: r.location,
+    status: r.status,
+    priceKes: r.price_kes === null ? null : Number(r.price_kes),
+    priceUnit: r.price_unit,
+    soldAt: r.sold_at ? r.sold_at.toISOString().slice(0, 10) : null,
+    createdAt: r.created_at.toISOString(),
+  };
+}
+
+const PROPERTY_COLUMNS =
+  "id, name, location, status, price_kes, price_unit, sold_at, created_at";
+
+contractRoute(contract.listProperties, "list_properties_failed", async () => {
+  const result = await query(
+    `SELECT ${PROPERTY_COLUMNS} FROM propiq.properties ORDER BY created_at DESC, id DESC`
+  );
+  return { properties: result.rows.map(toProperty) };
+});
+
+contractRoute(contract.updateProperty, "update_property_failed", async (req, input) => {
+  const sets = [];
+  const params = [];
+  if (input.status !== undefined) {
+    params.push(input.status);
+    sets.push(`status = $${params.length}`);
+    // Sold listings get a close date automatically; leaving "sold" clears it
+    // so the revenue trend never counts an unsold property.
+    sets.push(
+      input.status === "sold" ? "sold_at = COALESCE(sold_at, CURRENT_DATE)" : "sold_at = NULL"
+    );
+  }
+  if (input.priceKes !== undefined) {
+    params.push(input.priceKes);
+    sets.push(`price_kes = $${params.length}`);
+  }
+  if (input.priceUnit !== undefined) {
+    params.push(input.priceUnit);
+    sets.push(`price_unit = $${params.length}`);
+  }
+  params.push(Number(req.params.id));
+  const result = await query(
+    `UPDATE propiq.properties SET ${sets.join(", ")}
+      WHERE id = $${params.length}
+      RETURNING ${PROPERTY_COLUMNS}`,
+    params
+  );
+  if (result.rows.length === 0) {
+    throw new Error(`property ${req.params.id} not found`);
+  }
+  return toProperty(result.rows[0]);
+});
 
 contractRoute(contract.kpiSummary, "kpi_summary_failed", async () => {
   const [statuses, leads] = await Promise.all([
@@ -180,6 +252,8 @@ contractRoute(contract.revenueTrend, "revenue_trend_failed", async () => {
 });
 
 contractRoute(contract.priceBands, "price_bands_failed", async () => {
+  // Sale prices only: rents and per-area rates live on other scales and
+  // would land in meaningless buckets.
   const result = await query(
     `SELECT CASE
               WHEN price_kes IS NULL THEN 'Unpriced'
@@ -191,6 +265,7 @@ contractRoute(contract.priceBands, "price_bands_failed", async () => {
             END AS band,
             COUNT(*)::int AS count
        FROM propiq.properties
+      WHERE price_unit = 'total'
       GROUP BY 1`
   );
   const counts = Object.fromEntries(result.rows.map((r) => [r.band, r.count]));

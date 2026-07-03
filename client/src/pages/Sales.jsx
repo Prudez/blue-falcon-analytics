@@ -134,7 +134,10 @@ function PriceBandsCard({ bands }) {
   const data = bands.map((b) => ({ band: b.band, count: b.count }));
   return (
     <div className="card chart-card">
-      <h2>Listings by Price Band (KES)</h2>
+      <h2>
+        Sale Listings by Price Band (KES)
+        <span className="card-note">rents and rates excluded</span>
+      </h2>
       <ResponsiveContainer width="100%" height={260}>
         <BarChart data={data}>
           <XAxis dataKey="band" />

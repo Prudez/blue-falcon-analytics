@@ -33,9 +33,29 @@ export const SocialPlatform = z.enum(["facebook", "instagram", "tiktok", "twitte
 // both together or neither.
 export const LeadStage = z.enum(["lead", "viewing", "offer", "closed"]);
 
+// What price_kes means for a listing: a sale total, a monthly rent, or a
+// rate. Matches the CHECK constraint on propiq.properties.price_unit
+// (migration 003); change both together or neither.
+export const PriceUnit = z.enum(["total", "per_month", "per_sqft", "per_acre"]);
+
+// One editable listing row, as the Listings page sees it. soldAt is a plain
+// date (YYYY-MM-DD), stamped automatically when status becomes "sold".
+export const Property = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  location: z.string().nullable(),
+  status: ListingStatus,
+  priceKes: z.number().int().nonnegative().nullable(),
+  priceUnit: PriceUnit,
+  soldAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  createdAt: z.string().datetime(),
+});
+
 // Price bands for the listings breakdown. Labels are shared here so the
-// backend buckets and the frontend legend can never disagree. "Unpriced"
-// catches NULL price_kes.
+// backend buckets and the frontend legend can never disagree. Only sale
+// prices (price_unit = 'total') are banded; rents and rates are different
+// scales and would make the buckets meaningless. "Unpriced" catches NULL
+// price_kes.
 export const PriceBand = z.enum([
   "Under 100K",
   "100K–1M",
@@ -202,6 +222,35 @@ export const contract = {
         })
       ),
     }),
+  },
+
+  // All listings for the Listings editor, newest first.
+  listProperties: {
+    method: "GET",
+    path: "/api/properties",
+    request: z.object({}),
+    response: z.object({
+      properties: z.array(Property),
+    }),
+  },
+
+  // Edit a listing from the Listings page. Send only the fields being
+  // changed; at least one is required. Setting status to "sold" stamps
+  // sold_at with today's date (if not already set); any other status clears
+  // it. Returns the full updated row.
+  updateProperty: {
+    method: "PATCH",
+    path: "/api/properties/:id",
+    request: z
+      .object({
+        status: ListingStatus.optional(),
+        priceKes: z.number().int().nonnegative().nullable().optional(),
+        priceUnit: PriceUnit.optional(),
+      })
+      .refine((body) => Object.keys(body).length > 0, {
+        message: "At least one field is required.",
+      }),
+    response: Property,
   },
 
   // Location breakdown widget. Properties with no location yet are grouped

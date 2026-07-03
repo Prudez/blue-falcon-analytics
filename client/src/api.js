@@ -9,8 +9,6 @@ import { contract } from "../../shared/contract.js";
 
 const API_URL = import.meta.env.VITE_API_URL;
 
-// All contract endpoints are GETs with no request payload so far; one helper
-// covers them. Revisit when the contract grows params or bodies.
 async function getJson(endpoint) {
   const res = await fetch(`${API_URL}${endpoint.path}`);
   const body = await res.json();
@@ -18,6 +16,23 @@ async function getJson(endpoint) {
     throw new Error(body.message ?? `GET ${endpoint.path} failed`);
   }
   return endpoint.response.parse(body);
+}
+
+// Endpoints with a body (PATCH/POST). `params` fills :placeholders in the
+// path; the body is validated against the contract before it is sent, so a
+// malformed call fails here in development, not as a server 400.
+async function sendJson(endpoint, params, body) {
+  const path = endpoint.path.replace(/:(\w+)/g, (_, key) => encodeURIComponent(params[key]));
+  const res = await fetch(`${API_URL}${path}`, {
+    method: endpoint.method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(endpoint.request.parse(body)),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message ?? `${endpoint.method} ${path} failed`);
+  }
+  return endpoint.response.parse(data);
 }
 
 export const getHealth = () => getJson(contract.health);
@@ -30,3 +45,5 @@ export const getLeadFunnel = () => getJson(contract.leadFunnel);
 export const getRevenueTrend = () => getJson(contract.revenueTrend);
 export const getPriceBands = () => getJson(contract.priceBands);
 export const getRecentLeads = () => getJson(contract.recentLeads);
+export const listProperties = () => getJson(contract.listProperties);
+export const updateProperty = (id, patch) => sendJson(contract.updateProperty, { id }, patch);
