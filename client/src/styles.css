@@ -207,6 +207,36 @@ body {
   min-height: 320px;
 }
 
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.card-note {
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.chart-tooltip {
+  background: #fff;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(22, 41, 77, 0.12);
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.tooltip-platform {
+  margin-top: 6px;
+}
+
+.tooltip-detail {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .placeholder-page {
   color: var(--text-muted);
   font-size: 14px;

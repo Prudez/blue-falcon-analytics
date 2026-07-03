@@ -79,6 +79,42 @@ contractRoute(contract.listingsByStatus, "listings_by_status_failed", async () =
   };
 });
 
+contractRoute(contract.platformPerformance, "platform_performance_failed", async () => {
+  const result = await query(
+    `SELECT ac.property_id,
+            p.name AS property_name,
+            ac.platform,
+            COALESCE(ac.impressions, 0)::int AS impressions,
+            COALESCE(ac.reach, 0)::int AS reach,
+            COALESCE(ac.likes, 0)::int AS likes,
+            COALESCE(ac.comments, 0)::int AS comments,
+            COALESCE(ac.shares, 0)::int AS shares,
+            COALESCE(ac.clicks, 0)::int AS clicks,
+            ac.fetched_at
+       FROM propiq.analytics_cache ac
+       JOIN propiq.properties p ON p.id = ac.property_id
+      ORDER BY p.name, ac.platform`
+  );
+  const asOf = result.rows.length
+    ? new Date(Math.max(...result.rows.map((r) => r.fetched_at.getTime()))).toISOString()
+    : null;
+  return {
+    asOf,
+    rows: result.rows.map((r) => ({
+      propertyId: r.property_id,
+      propertyName: r.property_name,
+      platform: r.platform,
+      impressions: r.impressions,
+      reach: r.reach,
+      likes: r.likes,
+      comments: r.comments,
+      shares: r.shares,
+      clicks: r.clicks,
+      engagement: r.likes + r.comments + r.shares + r.clicks,
+    })),
+  };
+});
+
 contractRoute(contract.listingsByLocation, "listings_by_location_failed", async () => {
   const result = await query(
     `SELECT COALESCE(NULLIF(TRIM(location), ''), 'Unspecified') AS location,

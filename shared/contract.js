@@ -23,6 +23,10 @@ export const ErrorResponse = z.object({
 // (migration 001); change both together or neither.
 export const ListingStatus = z.enum(["available", "under_offer", "sold"]);
 
+// Platform names as PropIQ stores them in analytics_cache.platform.
+// "twitter" is the storage name for X.
+export const SocialPlatform = z.enum(["facebook", "instagram", "tiktok", "twitter"]);
+
 // ---- Endpoints ---------------------------------------------------------
 
 export const contract = {
@@ -60,6 +64,34 @@ export const contract = {
         z.object({
           status: ListingStatus,
           count: z.number().int().nonnegative(),
+        })
+      ),
+    }),
+  },
+
+  // Overview comparison card: how each platform performed per property,
+  // read from PropIQ's analytics_cache. Only properties with cached platform
+  // metrics appear. `asOf` is the newest fetched_at in the cache (null when
+  // the cache is empty) — the numbers are PropIQ's last fetch, not live.
+  // `engagement` is computed server-side as likes + comments + shares + clicks.
+  platformPerformance: {
+    method: "GET",
+    path: "/api/marketing/platform-performance",
+    request: z.object({}),
+    response: z.object({
+      asOf: z.string().datetime().nullable(),
+      rows: z.array(
+        z.object({
+          propertyId: z.number().int(),
+          propertyName: z.string(),
+          platform: SocialPlatform,
+          impressions: z.number().int().nonnegative(),
+          reach: z.number().int().nonnegative(),
+          likes: z.number().int().nonnegative(),
+          comments: z.number().int().nonnegative(),
+          shares: z.number().int().nonnegative(),
+          clicks: z.number().int().nonnegative(),
+          engagement: z.number().int().nonnegative(),
         })
       ),
     }),

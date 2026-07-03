@@ -24,3 +24,4 @@ export const getHealth = () => getJson(contract.health);
 export const getKpiSummary = () => getJson(contract.kpiSummary);
 export const getListingsByStatus = () => getJson(contract.listingsByStatus);
 export const getListingsByLocation = () => getJson(contract.listingsByLocation);
+export const getPlatformPerformance = () => getJson(contract.platformPerformance);

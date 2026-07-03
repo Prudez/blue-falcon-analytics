@@ -15,6 +15,7 @@ import {
   getKpiSummary,
   getListingsByStatus,
   getListingsByLocation,
+  getPlatformPerformance,
 } from "../api.js";
 
 const STATUS_LABELS = {
@@ -89,18 +90,112 @@ function LocationBars({ breakdown }) {
   );
 }
 
+const PLATFORM_LABELS = {
+  facebook: "Facebook",
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  twitter: "X",
+};
+
+const PLATFORM_COLORS = {
+  facebook: "var(--chart-navy)",
+  instagram: "var(--chart-purple)",
+  tiktok: "var(--chart-teal)",
+  twitter: "var(--chart-amber)",
+};
+
+// Full metric breakdown on hover, not just the bar's engagement number.
+function PlatformTooltip({ active, payload, label, metricsByKey }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="chart-tooltip">
+      <strong>{label}</strong>
+      {payload.map((entry) => {
+        const m = metricsByKey[`${label}|${entry.dataKey}`];
+        return (
+          <div key={entry.dataKey} className="tooltip-platform">
+            <span style={{ color: entry.color }}>{PLATFORM_LABELS[entry.dataKey]}</span>
+            : {entry.value} engagement
+            {m && (
+              <div className="tooltip-detail">
+                reach {m.reach} · impressions {m.impressions} · likes {m.likes} ·
+                comments {m.comments} · shares {m.shares} · clicks {m.clicks}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlatformPerformanceCard({ asOf, rows }) {
+  if (!rows.length) {
+    return (
+      <div className="card chart-card full-width">
+        <h2>Platform Performance by Property</h2>
+        <p className="loading">No platform data yet.</p>
+      </div>
+    );
+  }
+
+  // Pivot to one entry per property with a key per platform, the shape
+  // Recharts wants for grouped bars.
+  const platforms = [...new Set(rows.map((r) => r.platform))];
+  const metricsByKey = {};
+  const byProperty = new Map();
+  for (const r of rows) {
+    if (!byProperty.has(r.propertyName)) {
+      byProperty.set(r.propertyName, { property: r.propertyName });
+    }
+    byProperty.get(r.propertyName)[r.platform] = r.engagement;
+    metricsByKey[`${r.propertyName}|${r.platform}`] = r;
+  }
+  const data = [...byProperty.values()];
+  const asOfLabel = asOf
+    ? new Date(asOf).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : null;
+
+  return (
+    <div className="card chart-card full-width">
+      <h2>
+        Platform Performance by Property
+        {asOfLabel && <span className="card-note">data as of {asOfLabel}</span>}
+      </h2>
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart data={data}>
+          <XAxis dataKey="property" />
+          <YAxis allowDecimals={false} />
+          <Tooltip content={<PlatformTooltip metricsByKey={metricsByKey} />} />
+          <Legend formatter={(value) => PLATFORM_LABELS[value]} />
+          {platforms.map((p) => (
+            <Bar key={p} dataKey={p} fill={PLATFORM_COLORS[p]} radius={[6, 6, 0, 0]} maxBarSize={48} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export default function Overview() {
   const [kpis, setKpis] = useState(null);
   const [byStatus, setByStatus] = useState(null);
   const [byLocation, setByLocation] = useState(null);
+  const [platformPerf, setPlatformPerf] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    Promise.all([getKpiSummary(), getListingsByStatus(), getListingsByLocation()])
-      .then(([summary, status, location]) => {
+    Promise.all([
+      getKpiSummary(),
+      getListingsByStatus(),
+      getListingsByLocation(),
+      getPlatformPerformance(),
+    ])
+      .then(([summary, status, location, perf]) => {
         setKpis(summary);
         setByStatus(status.breakdown);
         setByLocation(location.breakdown);
+        setPlatformPerf(perf);
       })
       .catch((err) => setError(err.message));
   }, []);
@@ -124,6 +219,7 @@ export default function Overview() {
         <StatusDonut breakdown={byStatus} />
         <LocationBars breakdown={byLocation} />
       </div>
+      <PlatformPerformanceCard asOf={platformPerf.asOf} rows={platformPerf.rows} />
     </>
   );
 }

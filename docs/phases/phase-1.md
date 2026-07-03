@@ -20,6 +20,7 @@
 - Overview page (`client/src/pages/Overview.jsx`): four KPI cards, a listings-by-status donut, and a listings-by-location horizontal bar chart, both in Recharts.
 - Client: `api.js` gained a generic `getJson(endpoint)` helper; all fetchers parse responses through the contract. Recharts added as a client dependency.
 - Verified end to end in the browser against live data: KPIs render 7 / 0 / 0 / 0, both charts draw, no console errors.
+- Post-close addition (same phase, user request): `GET /api/marketing/platform-performance` and the "Platform Performance by Property" Overview card. Grouped bars compare each platform's engagement (likes + comments + shares + clicks, computed server-side) per property, from PropIQ's existing `analytics_cache`. Full metric breakdown in the tooltip, "data as of" label from the newest `fetched_at`, calm empty state. Covers whatever the cache holds (today: 2 properties, Facebook and Instagram).
 
 ## 2. Contract diff
 
@@ -27,6 +28,7 @@
 - Added: `kpiSummary` (`GET /api/kpis/summary`).
 - Added: `listingsByStatus` (`GET /api/listings/by-status`).
 - Added: `listingsByLocation` (`GET /api/listings/by-location`).
+- Added: shared shape `SocialPlatform` (`facebook | instagram | tiktok | twitter`; "twitter" is the storage name for X) and `platformPerformance` (`GET /api/marketing/platform-performance`).
 - Unchanged: `health`, `ErrorResponse`.
 
 ## 3. Environment state
@@ -52,6 +54,8 @@
 - **Zero-count statuses are emitted by the backend**, so the frontend never invents categories and the donut legend does not jump between renders.
 - **The location widget is a horizontal bar chart, not the Kenya choropleth from the design prompts.** Locations are free text and mostly NULL today. The choropleth needs a structured county field and real data; deferred until both exist (likely Phase 2 or 5).
 - **`leads.source` allows `'other'`** in addition to the brief's platform list, so manual entries never violate the CHECK constraint.
+- **The platform comparison uses bars, not lines; a trend line chart is deferred to Phase 3.** The user asked for a line graph. Lines imply an ordered axis; properties are unordered categories, so lines would draw meaningless slopes between them. The data that suits a line chart (metrics over time, `analytics_history`) currently holds a single June snapshot per platform. Phase 3's fetchers will accumulate the time series; add the platform trend line chart then.
+- **The Overview shows cached platform data before Phase 3 exists.** The comparison card reads `analytics_cache` as PropIQ last left it and labels the date. Chosen because the payoff feature deserved visibility now and the read is free; the card gets truthful and complete automatically once Phase 3 refreshes the cache.
 - **Wrong-database guard proved its worth:** the first two connection strings supplied pointed at an empty non-PropIQ project and then carried a stale password. Introspecting `information_schema` before building against a "connected" database is now the house habit; a reachable DB is not necessarily the right DB.
 
 ## 6. Next-phase entry points
