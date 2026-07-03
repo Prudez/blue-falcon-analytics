@@ -42,6 +42,12 @@ const schema = z.object({
   SUPABASE_URL: optional(z.string().url()),
   SUPABASE_ANON_KEY: optional(z.string()),
   SUPABASE_SERVICE_ROLE_KEY: optional(z.string()),
+
+  // Meta / Instagram Graph API (the existing "PropIQ Sync" Meta app).
+  // Optional so the app runs without marketing sync; the sync endpoint
+  // refuses with a clear message when these are unset.
+  META_ACCESS_TOKEN: optional(z.string()),
+  IG_USER_ID: optional(z.string().regex(/^\d+$/, "IG_USER_ID is the numeric Instagram Business account id")),
 });
 
 const parsed = schema.safeParse(process.env);

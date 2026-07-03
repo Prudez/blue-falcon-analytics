@@ -9,6 +9,12 @@ import cors from "cors";
 import { env } from "./env.js";
 import { query } from "./db.js";
 import {
+  fetchAccount,
+  fetchMedia,
+  fetchInsights,
+  permalinkCode,
+} from "./fetchers/instagram.js";
+import {
   contract,
   ErrorResponse,
   ListingStatus,
@@ -65,11 +71,21 @@ function contractRoute(endpoint, errorCode, handler) {
       console.error(`${endpoint.method} ${endpoint.path} failed:`, err.message);
       const body = ErrorResponse.parse({
         error: errorCode,
-        message: "Query failed. Check the server log.",
+        // Errors thrown via httpError carry a message written for the user;
+        // everything else stays generic so internals never leak.
+        message: err.expose ? err.message : "Query failed. Check the server log.",
       });
-      res.status(503).json(body);
+      res.status(err.expose ? (err.status ?? 503) : 503).json(body);
     }
   });
+}
+
+// An error whose message is safe and useful to show the user.
+function httpError(status, message) {
+  const err = new Error(message);
+  err.expose = true;
+  err.status = status;
+  return err;
 }
 
 // Maps a properties row to the contract's Property shape.
@@ -364,6 +380,253 @@ contractRoute(contract.deletePlatformLink, "delete_platform_link_failed", async 
     throw new Error(`platform link ${req.params.id} not found`);
   }
   return { deleted: true };
+});
+
+contractRoute(contract.createLead, "create_lead_failed", async (req, input) => {
+  const result = await query(
+    `INSERT INTO propiq.leads (property_id, name, phone, source, stage)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, name, phone, source, stage, created_at, property_id`,
+    [input.propertyId ?? null, input.name, input.phone ?? null, input.source, input.stage ?? "lead"]
+  );
+  const lead = result.rows[0];
+  const prop = lead.property_id
+    ? await query("SELECT name FROM propiq.properties WHERE id = $1", [lead.property_id])
+    : null;
+  return {
+    id: lead.id,
+    name: lead.name,
+    phone: lead.phone,
+    propertyName: prop?.rows[0]?.name ?? null,
+    source: lead.source,
+    stage: lead.stage,
+    createdAt: lead.created_at.toISOString(),
+  };
+});
+
+// Latest capture per post, joined to its post and property. The shared
+// SELECT for both the KPIs and the top-posts list.
+const LATEST_POST_METRICS = `
+  SELECT DISTINCT ON (pm.post_id)
+         pm.post_id, pm.reach, pm.views, pm.likes, pm.comments,
+         pm.shares, pm.saves,
+         (COALESCE(pm.likes, 0) + COALESCE(pm.comments, 0)
+          + COALESCE(pm.shares, 0) + COALESCE(pm.saves, 0)) AS engagement,
+         po.property_id, po.caption, po.permalink, po.published_at,
+         pr.name AS property_name
+    FROM propiq.post_metrics pm
+    JOIN propiq.posts po ON po.id = pm.post_id
+    JOIN propiq.properties pr ON pr.id = po.property_id
+   WHERE po.platform = 'instagram'
+   ORDER BY pm.post_id, pm.captured_at DESC`;
+
+contractRoute(contract.instagramOverview, "instagram_overview_failed", async () => {
+  const accountResult = await query(
+    `SELECT a.id, a.handle, a.last_synced_at,
+            m.followers, m.media_count
+       FROM propiq.platform_accounts a
+       LEFT JOIN LATERAL (
+         SELECT followers, media_count FROM propiq.account_metrics
+          WHERE platform_account_id = a.id
+          ORDER BY captured_at DESC LIMIT 1
+       ) m ON true
+      WHERE a.platform = 'instagram'
+      ORDER BY a.id LIMIT 1`
+  );
+  const acc = accountResult.rows[0];
+
+  const [latest, trend] = await Promise.all([
+    query(LATEST_POST_METRICS),
+    acc
+      ? query(
+          `SELECT captured_at, followers FROM propiq.account_metrics
+            WHERE platform_account_id = $1 ORDER BY captured_at`,
+          [acc.id]
+        )
+      : { rows: [] },
+  ]);
+
+  const reach = latest.rows.reduce((s, r) => s + (r.reach ?? 0), 0);
+  const engagement = latest.rows.reduce((s, r) => s + Number(r.engagement), 0);
+  const top = [...latest.rows]
+    .sort((a, b) => Number(b.engagement) - Number(a.engagement))
+    .slice(0, 5);
+
+  return {
+    account: acc
+      ? {
+          handle: acc.handle,
+          followers: acc.followers ?? null,
+          mediaCount: acc.media_count ?? null,
+          lastSyncedAt: acc.last_synced_at ? acc.last_synced_at.toISOString() : null,
+        }
+      : null,
+    kpis: {
+      reach,
+      engagement,
+      engagementRate: reach > 0 ? engagement / reach : null,
+      postsTracked: latest.rows.length,
+    },
+    followerTrend: trend.rows.map((r) => ({
+      capturedAt: r.captured_at.toISOString(),
+      followers: r.followers,
+    })),
+    topPosts: top.map((r) => ({
+      postId: r.post_id,
+      propertyName: r.property_name,
+      caption: r.caption,
+      permalink: r.permalink,
+      publishedAt: r.published_at ? r.published_at.toISOString() : null,
+      reach: r.reach,
+      views: r.views,
+      likes: r.likes,
+      comments: r.comments,
+      engagement: Number(r.engagement),
+    })),
+  };
+});
+
+contractRoute(contract.syncInstagram, "instagram_sync_failed", async () => {
+  if (!env.META_ACCESS_TOKEN || !env.IG_USER_ID) {
+    throw httpError(
+      503,
+      "Instagram credentials are not configured. Set META_ACCESS_TOKEN and IG_USER_ID in .env, then restart the server."
+    );
+  }
+  const creds = { igUserId: env.IG_USER_ID, accessToken: env.META_ACCESS_TOKEN };
+
+  let account;
+  try {
+    account = await fetchAccount(creds);
+  } catch (err) {
+    throw httpError(502, err.message);
+  }
+
+  // Upsert the account row and snapshot followers for the trend chart.
+  const accountRow = await query(
+    `INSERT INTO propiq.platform_accounts (platform, handle, external_id, last_synced_at)
+     VALUES ('instagram', $1, $2, now())
+     ON CONFLICT (platform, handle)
+     DO UPDATE SET external_id = EXCLUDED.external_id, last_synced_at = now()
+     RETURNING id`,
+    [account.username, env.IG_USER_ID]
+  );
+  const accountId = accountRow.rows[0].id;
+  await query(
+    `INSERT INTO propiq.account_metrics (platform_account_id, followers, media_count)
+     VALUES ($1, $2, $3)`,
+    [accountId, account.followers, account.mediaCount]
+  );
+
+  // Match the account's media to the user's stored post links by permalink
+  // code — never by guessing ids from the URL (the Phase 1 lesson).
+  const links = await query(
+    `SELECT id, property_id, post_url FROM propiq.platform_links WHERE platform = 'instagram'`
+  );
+  const media = links.rows.length ? await fetchMedia(creds) : [];
+  const mediaByCode = new Map();
+  for (const m of media) {
+    const code = permalinkCode(m.permalink);
+    if (code) mediaByCode.set(code, m);
+  }
+
+  let postsMatched = 0;
+  let metricsCaptured = 0;
+  let linksUnmatched = 0;
+  const touchedProperties = new Set();
+
+  for (const link of links.rows) {
+    const code = permalinkCode(link.post_url);
+    const m = code ? mediaByCode.get(code) : null;
+    if (!m) {
+      linksUnmatched++;
+      continue;
+    }
+    postsMatched++;
+    touchedProperties.add(link.property_id);
+
+    const postRow = await query(
+      `INSERT INTO propiq.posts
+         (property_id, platform_account_id, platform, external_post_id,
+          permalink, caption, media_type, published_at)
+       VALUES ($1, $2, 'instagram', $3, $4, $5, $6, $7)
+       ON CONFLICT (platform, external_post_id)
+       DO UPDATE SET caption = EXCLUDED.caption, permalink = EXCLUDED.permalink
+       RETURNING id`,
+      [
+        link.property_id,
+        accountId,
+        m.id,
+        m.permalink ?? null,
+        m.caption ?? null,
+        m.media_type ?? null,
+        m.timestamp ?? null,
+      ]
+    );
+    // Resolve the link's placeholder post_id with the id the API returned.
+    await query("UPDATE propiq.platform_links SET post_id = $1 WHERE id = $2", [m.id, link.id]);
+
+    const insights = await fetchInsights({ mediaId: m.id, accessToken: creds.accessToken });
+    await query(
+      `INSERT INTO propiq.post_metrics
+         (post_id, reach, views, likes, comments, shares, saves, total_interactions, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'api')`,
+      [
+        postRow.rows[0].id,
+        insights.reach,
+        insights.views,
+        m.like_count ?? null,
+        m.comments_count ?? null,
+        insights.shares,
+        insights.saves,
+        insights.totalInteractions,
+      ]
+    );
+    metricsCaptured++;
+  }
+
+  // Refresh the property-level rollups PropIQ's tables already model, so
+  // the Overview comparison card and future trend charts stay truthful.
+  for (const propertyId of touchedProperties) {
+    const agg = await query(
+      `SELECT COALESCE(SUM(reach), 0)::int AS reach,
+              COALESCE(SUM(views), 0)::int AS views,
+              COALESCE(SUM(likes), 0)::int AS likes,
+              COALESCE(SUM(comments), 0)::int AS comments,
+              COALESCE(SUM(shares), 0)::int AS shares
+         FROM (${LATEST_POST_METRICS}) latest
+        WHERE property_id = $1`,
+      [propertyId]
+    );
+    const a = agg.rows[0];
+    await query(
+      `DELETE FROM propiq.analytics_cache WHERE property_id = $1 AND platform = 'instagram'`,
+      [propertyId]
+    );
+    await query(
+      `INSERT INTO propiq.analytics_cache
+         (property_id, platform, impressions, likes, comments, shares, clicks, reach, fetched_at)
+       VALUES ($1, 'instagram', $2, $3, $4, $5, 0, $6, now())`,
+      [propertyId, a.views, a.likes, a.comments, a.shares, a.reach]
+    );
+    await query(
+      `INSERT INTO propiq.analytics_history
+         (property_id, platform, impressions, likes, comments, shares, clicks, reach, recorded_at)
+       VALUES ($1, 'instagram', $2, $3, $4, $5, 0, $6, now())`,
+      [propertyId, a.views, a.likes, a.comments, a.shares, a.reach]
+    );
+  }
+
+  return {
+    account: {
+      handle: account.username,
+      followers: account.followers,
+      mediaCount: account.mediaCount,
+    },
+    postsMatched,
+    metricsCaptured,
+    linksUnmatched,
+  };
 });
 
 contractRoute(contract.listingsByLocation, "listings_by_location_failed", async () => {

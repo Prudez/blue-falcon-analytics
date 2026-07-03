@@ -3,23 +3,14 @@ import { getHealth } from "./api.js";
 import Overview from "./pages/Overview.jsx";
 import Sales from "./pages/Sales.jsx";
 import Listings from "./pages/Listings.jsx";
+import Marketing from "./pages/Marketing.jsx";
 
-// Marketing arrives in Phase 3; its nav item exists now so the shell is
-// complete, and routes to a placeholder.
 const PAGES = [
-  { key: "overview", label: "Overview", phase: null },
-  { key: "sales", label: "Sales", phase: null },
-  { key: "marketing", label: "Marketing", phase: 3 },
-  { key: "listings", label: "Listings", phase: null },
+  { key: "overview", label: "Overview" },
+  { key: "sales", label: "Sales" },
+  { key: "marketing", label: "Marketing" },
+  { key: "listings", label: "Listings" },
 ];
-
-function PlaceholderPage({ label, phase }) {
-  return (
-    <div className="card placeholder-page">
-      {label} is coming in Phase {phase}. The Overview page is live now.
-    </div>
-  );
-}
 
 export default function App() {
   const [page, setPage] = useState("overview");
@@ -76,7 +67,7 @@ export default function App() {
           ) : page === "listings" ? (
             <Listings />
           ) : (
-            <PlaceholderPage label={current.label} phase={current.phase} />
+            <Marketing />
           )}
         </main>
       </div>

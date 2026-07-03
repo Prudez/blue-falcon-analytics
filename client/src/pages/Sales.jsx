@@ -17,8 +17,11 @@ import {
   getPriceBands,
   getListingsByLocation,
   getRecentLeads,
+  createLead,
+  listProperties,
 } from "../api.js";
 import LocationBars from "../components/LocationBars.jsx";
+import { LeadStage, LeadSource } from "../../../shared/contract.js";
 
 const STAGE_LABELS = {
   lead: "Lead",
@@ -35,6 +38,107 @@ const SOURCE_LABELS = {
   walk_in: "Walk-in",
   other: "Other",
 };
+
+// Capture a lead without leaving the dashboard. On save every Sales widget
+// refreshes, so the funnel and trend react immediately.
+function AddLeadForm({ properties, onAdded, onError }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [propertyId, setPropertyId] = useState("");
+  const [source, setSource] = useState("walk_in");
+  const [stage, setStage] = useState("lead");
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!name.trim()) {
+      onError("The lead needs a name.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await createLead({
+        name: name.trim(),
+        ...(phone.trim() ? { phone: phone.trim() } : {}),
+        propertyId: propertyId === "" ? null : Number(propertyId),
+        source,
+        stage,
+      });
+      onError(null);
+      setName("");
+      setPhone("");
+      setPropertyId("");
+      setSource("walk_in");
+      setStage("lead");
+      onAdded();
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="add-listing-form" onSubmit={submit}>
+      <input
+        className="table-input form-grow"
+        type="text"
+        placeholder="Lead name"
+        value={name}
+        disabled={saving}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <input
+        className="table-input"
+        type="tel"
+        placeholder="Phone (optional)"
+        value={phone}
+        disabled={saving}
+        onChange={(e) => setPhone(e.target.value)}
+      />
+      <select
+        className="table-select"
+        value={propertyId}
+        disabled={saving}
+        onChange={(e) => setPropertyId(e.target.value)}
+      >
+        <option value="">No property yet</option>
+        {properties.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+      <select
+        className="table-select"
+        value={source}
+        disabled={saving}
+        onChange={(e) => setSource(e.target.value)}
+      >
+        {LeadSource.options.map((s) => (
+          <option key={s} value={s}>
+            {SOURCE_LABELS[s]}
+          </option>
+        ))}
+      </select>
+      <select
+        className="table-select"
+        value={stage}
+        disabled={saving}
+        onChange={(e) => setStage(e.target.value)}
+      >
+        {LeadStage.options.map((s) => (
+          <option key={s} value={s}>
+            {STAGE_LABELS[s]}
+          </option>
+        ))}
+      </select>
+      <button className="button-primary" type="submit" disabled={saving}>
+        Add lead
+      </button>
+    </form>
+  );
+}
 
 // "2026-06" → "Jun 2026" for axis ticks and tooltips.
 function monthLabel(month) {
@@ -204,10 +308,12 @@ export default function Sales() {
   const [bands, setBands] = useState(null);
   const [byLocation, setByLocation] = useState(null);
   const [leads, setLeads] = useState(null);
+  const [properties, setProperties] = useState([]);
   const [error, setError] = useState(null);
+  const [formError, setFormError] = useState(null);
 
-  useEffect(() => {
-    Promise.all([
+  function load() {
+    return Promise.all([
       getSalesOverTime(),
       getLeadFunnel(),
       getRevenueTrend(),
@@ -224,6 +330,13 @@ export default function Sales() {
         setLeads(le.leads);
       })
       .catch((err) => setError(err.message));
+  }
+
+  useEffect(() => {
+    load();
+    listProperties()
+      .then((body) => setProperties(body.properties))
+      .catch(() => setProperties([]));
   }, []);
 
   if (error) {
@@ -235,6 +348,11 @@ export default function Sales() {
 
   return (
     <>
+      {formError && <div className="error-banner">Could not save: {formError}</div>}
+      <div className="card full-width">
+        <h2>Add a Lead</h2>
+        <AddLeadForm properties={properties} onAdded={load} onError={setFormError} />
+      </div>
       <div className="chart-row">
         <OverTimeCard points={overTime} />
         <FunnelCard stages={funnel} />

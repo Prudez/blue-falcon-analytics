@@ -51,6 +51,17 @@ export const PlatformLink = z.object({
 // both together or neither.
 export const LeadStage = z.enum(["lead", "viewing", "offer", "closed"]);
 
+// Where a lead came from. Matches the CHECK constraint on
+// propiq.leads.source (migration 001); change both together or neither.
+export const LeadSource = z.enum([
+  "facebook",
+  "instagram",
+  "tiktok",
+  "twitter",
+  "walk_in",
+  "other",
+]);
+
 // What price_kes means for a listing: a sale total, a monthly rent, or a
 // rate. Matches the CHECK constraint on propiq.properties.price_unit
 // (migration 003); change both together or neither.
@@ -318,6 +329,96 @@ export const contract = {
     request: z.object({}),
     response: z.object({
       deleted: z.literal(true),
+    }),
+  },
+
+  // Capture a lead from the Sales page. Stage defaults to the top of the
+  // funnel. Returns the same row shape recentLeads uses.
+  createLead: {
+    method: "POST",
+    path: "/api/leads",
+    request: z.object({
+      name: z.string().min(1, "The lead needs a name."),
+      phone: z.string().optional(),
+      propertyId: z.number().int().nullable().optional(),
+      source: LeadSource,
+      stage: LeadStage.optional(),
+    }),
+    response: z.object({
+      id: z.number().int(),
+      name: z.string(),
+      phone: z.string().nullable(),
+      propertyName: z.string().nullable(),
+      source: z.string(),
+      stage: LeadStage,
+      createdAt: z.string().datetime(),
+    }),
+  },
+
+  // Everything the Marketing page renders, in one call. `account` is null
+  // until the first successful sync. Metrics come from the LATEST capture
+  // per post; engagementRate is engagement/reach (null when reach is 0).
+  instagramOverview: {
+    method: "GET",
+    path: "/api/marketing/instagram",
+    request: z.object({}),
+    response: z.object({
+      account: z
+        .object({
+          handle: z.string(),
+          followers: z.number().int().nullable(),
+          mediaCount: z.number().int().nullable(),
+          lastSyncedAt: z.string().datetime().nullable(),
+        })
+        .nullable(),
+      kpis: z.object({
+        reach: z.number().int().nonnegative(),
+        engagement: z.number().int().nonnegative(),
+        engagementRate: z.number().nullable(),
+        postsTracked: z.number().int().nonnegative(),
+      }),
+      followerTrend: z.array(
+        z.object({
+          capturedAt: z.string().datetime(),
+          followers: z.number().int().nullable(),
+        })
+      ),
+      topPosts: z.array(
+        z.object({
+          postId: z.number().int(),
+          propertyName: z.string(),
+          caption: z.string().nullable(),
+          permalink: z.string().nullable(),
+          publishedAt: z.string().datetime().nullable(),
+          reach: z.number().int().nullable(),
+          views: z.number().int().nullable(),
+          likes: z.number().int().nullable(),
+          comments: z.number().int().nullable(),
+          engagement: z.number().int().nonnegative(),
+        })
+      ),
+    }),
+  },
+
+  // Pull fresh data from the Instagram Graph API: account + followers
+  // snapshot, then match the account's media against platform_links by
+  // permalink, storing posts and a metrics capture for each match. Also
+  // refreshes analytics_cache/analytics_history so the Overview card and
+  // future trend charts stay current. Refuses with a clear message when
+  // META_ACCESS_TOKEN / IG_USER_ID are not configured.
+  syncInstagram: {
+    method: "POST",
+    path: "/api/marketing/sync/instagram",
+    request: z.object({}),
+    response: z.object({
+      account: z.object({
+        handle: z.string(),
+        followers: z.number().int().nullable(),
+        mediaCount: z.number().int().nullable(),
+      }),
+      postsMatched: z.number().int().nonnegative(),
+      metricsCaptured: z.number().int().nonnegative(),
+      linksUnmatched: z.number().int().nonnegative(),
     }),
   },
 

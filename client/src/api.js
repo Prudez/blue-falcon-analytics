@@ -51,3 +51,6 @@ export const updateProperty = (id, patch) => sendJson(contract.updateProperty, {
 export const listPlatformLinks = () => getJson(contract.listPlatformLinks);
 export const addPlatformLink = (body) => sendJson(contract.addPlatformLink, {}, body);
 export const deletePlatformLink = (id) => sendJson(contract.deletePlatformLink, { id }, {});
+export const createLead = (body) => sendJson(contract.createLead, {}, body);
+export const getInstagramOverview = () => getJson(contract.instagramOverview);
+export const syncInstagram = () => sendJson(contract.syncInstagram, {}, {});
