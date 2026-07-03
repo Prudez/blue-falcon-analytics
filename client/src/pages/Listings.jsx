@@ -15,10 +15,16 @@ const UNIT_LABELS = {
   per_acre: "KES / acre",
 };
 
+// "5000000" (or 5000000) → "5,000,000" for the price field.
+function formatPrice(value) {
+  if (value === null || value === "") return "";
+  return Number(value).toLocaleString("en-KE");
+}
+
 // One editable row. Dropdown changes save immediately; the price input saves
 // on blur or Enter, so typing does not fire a request per keystroke.
 function ListingRow({ property, onSaved, onError }) {
-  const [priceDraft, setPriceDraft] = useState(property.priceKes ?? "");
+  const [priceDraft, setPriceDraft] = useState(formatPrice(property.priceKes));
   const [saving, setSaving] = useState(false);
 
   async function save(patch) {
@@ -33,14 +39,17 @@ function ListingRow({ property, onSaved, onError }) {
     }
   }
 
+  // Keep only digits, then re-insert thousands separators live, so pasted
+  // or typed commas are accepted (and never required).
+  function handlePriceChange(e) {
+    const digits = e.target.value.replace(/[^\d]/g, "");
+    setPriceDraft(digits === "" ? "" : formatPrice(digits));
+  }
+
   function savePrice() {
-    const value = priceDraft === "" ? null : Number(priceDraft);
+    const digits = priceDraft.replace(/[^\d]/g, "");
+    const value = digits === "" ? null : Number(digits);
     if (value === property.priceKes) return;
-    if (value !== null && (!Number.isInteger(value) || value < 0)) {
-      onError(`"${priceDraft}" is not a valid price. Whole KES amounts only.`);
-      setPriceDraft(property.priceKes ?? "");
-      return;
-    }
     save({ priceKes: value });
   }
 
@@ -67,13 +76,12 @@ function ListingRow({ property, onSaved, onError }) {
       <td>
         <input
           className="table-input"
-          type="number"
-          min="0"
-          step="1"
+          type="text"
+          inputMode="numeric"
           placeholder="—"
           value={priceDraft}
           disabled={saving}
-          onChange={(e) => setPriceDraft(e.target.value)}
+          onChange={handlePriceChange}
           onBlur={savePrice}
           onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
         />
