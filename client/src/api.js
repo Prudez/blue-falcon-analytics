@@ -46,4 +46,8 @@ export const getRevenueTrend = () => getJson(contract.revenueTrend);
 export const getPriceBands = () => getJson(contract.priceBands);
 export const getRecentLeads = () => getJson(contract.recentLeads);
 export const listProperties = () => getJson(contract.listProperties);
+export const createProperty = (body) => sendJson(contract.createProperty, {}, body);
 export const updateProperty = (id, patch) => sendJson(contract.updateProperty, { id }, patch);
+export const listPlatformLinks = () => getJson(contract.listPlatformLinks);
+export const addPlatformLink = (body) => sendJson(contract.addPlatformLink, {}, body);
+export const deletePlatformLink = (id) => sendJson(contract.deletePlatformLink, { id }, {});

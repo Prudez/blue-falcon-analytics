@@ -24,8 +24,26 @@ export const ErrorResponse = z.object({
 export const ListingStatus = z.enum(["available", "under_offer", "sold"]);
 
 // Platform names as PropIQ stores them in analytics_cache.platform.
-// "twitter" is the storage name for X.
+// "twitter" is the storage name for X. These four have fetchers and first-
+// class labels; PlatformSlug below is the open set for everything else.
 export const SocialPlatform = z.enum(["facebook", "instagram", "tiktok", "twitter"]);
+
+// Any platform name, including user-added ones (linkedin, youtube, ...).
+// Lowercase slug, matching how PropIQ stores the built-in four.
+export const PlatformSlug = z
+  .string()
+  .regex(/^[a-z0-9_]{2,30}$/, "Platform must be a lowercase slug (letters, digits, underscores).");
+
+// One social post tied to a property. post_id exists in the table but is
+// resolved by the Phase 3 fetchers, not entered by hand, so it is not part
+// of the interface.
+export const PlatformLink = z.object({
+  id: z.number().int(),
+  propertyId: z.number().int(),
+  platform: PlatformSlug,
+  postUrl: z.string().url(),
+  linkedAt: z.string().datetime(),
+});
 
 // Funnel order matters: each lead sits at exactly one stage, and the funnel
 // endpoint reports cumulative counts (a lead at "offer" has passed "viewing").
@@ -122,7 +140,7 @@ export const contract = {
         z.object({
           propertyId: z.number().int(),
           propertyName: z.string(),
-          platform: SocialPlatform,
+          platform: PlatformSlug,
           impressions: z.number().int().nonnegative(),
           reach: z.number().int().nonnegative(),
           likes: z.number().int().nonnegative(),
@@ -234,6 +252,20 @@ export const contract = {
     }),
   },
 
+  // Create a listing from the Listings page. Status starts as "available";
+  // everything except the name can be filled in later.
+  createProperty: {
+    method: "POST",
+    path: "/api/properties",
+    request: z.object({
+      name: z.string().min(1, "A property name is required."),
+      location: z.string().optional(),
+      priceKes: z.number().int().nonnegative().nullable().optional(),
+      priceUnit: PriceUnit.optional(),
+    }),
+    response: Property,
+  },
+
   // Edit a listing from the Listings page. Send only the fields being
   // changed; at least one is required. Setting status to "sold" stamps
   // sold_at with today's date (if not already set); any other status clears
@@ -243,6 +275,8 @@ export const contract = {
     path: "/api/properties/:id",
     request: z
       .object({
+        name: z.string().min(1).optional(),
+        location: z.string().nullable().optional(),
         status: ListingStatus.optional(),
         priceKes: z.number().int().nonnegative().nullable().optional(),
         priceUnit: PriceUnit.optional(),
@@ -251,6 +285,40 @@ export const contract = {
         message: "At least one field is required.",
       }),
     response: Property,
+  },
+
+  // Every property→post link, for the Listings page's social editor. The
+  // client groups them by propertyId.
+  listPlatformLinks: {
+    method: "GET",
+    path: "/api/platform-links",
+    request: z.object({}),
+    response: z.object({
+      links: z.array(PlatformLink),
+    }),
+  },
+
+  // Tie a social post to a property by URL. The platform can be any slug,
+  // not just the built-in four; analytics for it arrive when a fetcher
+  // exists (Phase 3+).
+  addPlatformLink: {
+    method: "POST",
+    path: "/api/platform-links",
+    request: z.object({
+      propertyId: z.number().int(),
+      platform: PlatformSlug,
+      postUrl: z.string().url("The post link must be a full URL, starting with https://"),
+    }),
+    response: PlatformLink,
+  },
+
+  deletePlatformLink: {
+    method: "DELETE",
+    path: "/api/platform-links/:id",
+    request: z.object({}),
+    response: z.object({
+      deleted: z.literal(true),
+    }),
   },
 
   // Location breakdown widget. Properties with no location yet are grouped

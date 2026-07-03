@@ -18,6 +18,7 @@ import {
   getPlatformPerformance,
 } from "../api.js";
 import LocationBars from "../components/LocationBars.jsx";
+import { platformLabel, platformColor } from "../platforms.js";
 
 const STATUS_LABELS = {
   available: "Available",
@@ -71,20 +72,6 @@ function StatusDonut({ breakdown }) {
   );
 }
 
-const PLATFORM_LABELS = {
-  facebook: "Facebook",
-  instagram: "Instagram",
-  tiktok: "TikTok",
-  twitter: "X",
-};
-
-const PLATFORM_COLORS = {
-  facebook: "var(--chart-navy)",
-  instagram: "var(--chart-purple)",
-  tiktok: "var(--chart-teal)",
-  twitter: "var(--chart-amber)",
-};
-
 // Full metric breakdown on hover, not just the bar's engagement number.
 function PlatformTooltip({ active, payload, label, metricsByKey }) {
   if (!active || !payload?.length) return null;
@@ -95,7 +82,7 @@ function PlatformTooltip({ active, payload, label, metricsByKey }) {
         const m = metricsByKey[`${label}|${entry.dataKey}`];
         return (
           <div key={entry.dataKey} className="tooltip-platform">
-            <span style={{ color: entry.color }}>{PLATFORM_LABELS[entry.dataKey]}</span>
+            <span style={{ color: entry.color }}>{platformLabel(entry.dataKey)}</span>
             : {entry.value} engagement
             {m && (
               <div className="tooltip-detail">
@@ -148,9 +135,9 @@ function PlatformPerformanceCard({ asOf, rows }) {
           <XAxis dataKey="property" />
           <YAxis allowDecimals={false} />
           <Tooltip content={<PlatformTooltip metricsByKey={metricsByKey} />} />
-          <Legend formatter={(value) => PLATFORM_LABELS[value]} />
+          <Legend formatter={(value) => platformLabel(value)} />
           {platforms.map((p) => (
-            <Bar key={p} dataKey={p} fill={PLATFORM_COLORS[p]} radius={[6, 6, 0, 0]} maxBarSize={48} />
+            <Bar key={p} dataKey={p} fill={platformColor(p)} radius={[6, 6, 0, 0]} maxBarSize={48} />
           ))}
         </BarChart>
       </ResponsiveContainer>

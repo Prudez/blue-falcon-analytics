@@ -298,6 +298,109 @@ body {
   opacity: 0.6;
 }
 
+.add-listing-form,
+.add-link-form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.form-grow {
+  flex: 1;
+  min-width: 160px;
+}
+
+.button-primary {
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--navy);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button-link {
+  border: 0;
+  background: transparent;
+  color: var(--navy-soft);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.cell-name {
+  display: block;
+  width: 180px;
+  font-weight: 600;
+}
+
+.cell-location {
+  display: block;
+  width: 180px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.links-row td {
+  background: var(--bg);
+}
+
+.links-editor {
+  padding: 4px 8px;
+}
+
+.links-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.links-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.links-list a {
+  color: var(--navy-soft);
+  overflow-wrap: anywhere;
+}
+
+.link-platform {
+  font-weight: 600;
+  min-width: 80px;
+}
+
+.button-remove {
+  border: 1px solid var(--card-border);
+  background: #fff;
+  color: var(--negative);
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.add-link-form {
+  margin-bottom: 4px;
+}
+
 .stage-pill {
   display: inline-block;
   padding: 3px 10px;

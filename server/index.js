@@ -96,9 +96,35 @@ contractRoute(contract.listProperties, "list_properties_failed", async () => {
   return { properties: result.rows.map(toProperty) };
 });
 
+contractRoute(contract.createProperty, "create_property_failed", async (req, input) => {
+  // PropIQ's schema requires address; this app captures location, so the
+  // location doubles as the address until one is edited in PropIQ.
+  const result = await query(
+    `INSERT INTO propiq.properties (name, address, location, price_kes, price_unit)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING ${PROPERTY_COLUMNS}`,
+    [
+      input.name,
+      input.location ?? "",
+      input.location ?? null,
+      input.priceKes ?? null,
+      input.priceUnit ?? "total",
+    ]
+  );
+  return toProperty(result.rows[0]);
+});
+
 contractRoute(contract.updateProperty, "update_property_failed", async (req, input) => {
   const sets = [];
   const params = [];
+  if (input.name !== undefined) {
+    params.push(input.name);
+    sets.push(`name = $${params.length}`);
+  }
+  if (input.location !== undefined) {
+    params.push(input.location);
+    sets.push(`location = $${params.length}`);
+  }
   if (input.status !== undefined) {
     params.push(input.status);
     sets.push(`status = $${params.length}`);
@@ -296,6 +322,48 @@ contractRoute(contract.recentLeads, "recent_leads_failed", async () => {
       createdAt: r.created_at.toISOString(),
     })),
   };
+});
+
+function toLink(r) {
+  return {
+    id: r.id,
+    propertyId: r.property_id,
+    platform: r.platform,
+    postUrl: r.post_url,
+    linkedAt: r.linked_at.toISOString(),
+  };
+}
+
+contractRoute(contract.listPlatformLinks, "list_platform_links_failed", async () => {
+  const result = await query(
+    `SELECT id, property_id, platform, post_url, linked_at
+       FROM propiq.platform_links
+      ORDER BY property_id, platform, id`
+  );
+  return { links: result.rows.map(toLink) };
+});
+
+contractRoute(contract.addPlatformLink, "add_platform_link_failed", async (req, input) => {
+  // post_id is NOT NULL in PropIQ's schema but real platform post ids are
+  // resolved by the Phase 3 fetchers, not entered by hand; '' means
+  // "unresolved". (Phase 1 found hand-stored ids were wrong anyway.)
+  const result = await query(
+    `INSERT INTO propiq.platform_links (property_id, platform, post_id, post_url)
+     VALUES ($1, $2, '', $3)
+     RETURNING id, property_id, platform, post_url, linked_at`,
+    [input.propertyId, input.platform, input.postUrl]
+  );
+  return toLink(result.rows[0]);
+});
+
+contractRoute(contract.deletePlatformLink, "delete_platform_link_failed", async (req) => {
+  const result = await query("DELETE FROM propiq.platform_links WHERE id = $1 RETURNING id", [
+    Number(req.params.id),
+  ]);
+  if (result.rows.length === 0) {
+    throw new Error(`platform link ${req.params.id} not found`);
+  }
+  return { deleted: true };
 });
 
 contractRoute(contract.listingsByLocation, "listings_by_location_failed", async () => {
