@@ -25,3 +25,8 @@ export const getKpiSummary = () => getJson(contract.kpiSummary);
 export const getListingsByStatus = () => getJson(contract.listingsByStatus);
 export const getListingsByLocation = () => getJson(contract.listingsByLocation);
 export const getPlatformPerformance = () => getJson(contract.platformPerformance);
+export const getSalesOverTime = () => getJson(contract.salesOverTime);
+export const getLeadFunnel = () => getJson(contract.leadFunnel);
+export const getRevenueTrend = () => getJson(contract.revenueTrend);
+export const getPriceBands = () => getJson(contract.priceBands);
+export const getRecentLeads = () => getJson(contract.recentLeads);

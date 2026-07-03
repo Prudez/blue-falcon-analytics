@@ -237,6 +237,65 @@ body {
   color: var(--text-muted);
 }
 
+/* ---- Data table (Recent Leads) ---- */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.stage-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.stage-lead {
+  background: #eef1f6;
+  color: var(--navy-soft);
+}
+
+.stage-viewing {
+  background: #fdf3df;
+  color: #9a6c14;
+}
+
+.stage-offer {
+  background: #e7f4f2;
+  color: #1d7268;
+}
+
+.stage-closed {
+  background: #e6f3ec;
+  color: var(--positive);
+}
+
 .placeholder-page {
   color: var(--text-muted);
   font-size: 14px;

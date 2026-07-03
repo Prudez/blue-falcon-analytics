@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { getHealth } from "./api.js";
 import Overview from "./pages/Overview.jsx";
+import Sales from "./pages/Sales.jsx";
 
-// Sales, Marketing, and Listings arrive in later phases; their nav items
-// exist now so the shell is complete, and route to a placeholder.
+// Marketing and Listings arrive in later phases; their nav items exist now
+// so the shell is complete, and route to a placeholder.
 const PAGES = [
   { key: "overview", label: "Overview", phase: null },
-  { key: "sales", label: "Sales", phase: 2 },
+  { key: "sales", label: "Sales", phase: null },
   { key: "marketing", label: "Marketing", phase: 3 },
   { key: "listings", label: "Listings", phase: 5 },
 ];
@@ -69,6 +70,8 @@ export default function App() {
         <main className="content">
           {page === "overview" ? (
             <Overview />
+          ) : page === "sales" ? (
+            <Sales />
           ) : (
             <PlaceholderPage label={current.label} phase={current.phase} />
           )}
