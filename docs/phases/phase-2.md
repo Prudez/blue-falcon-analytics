@@ -20,6 +20,7 @@
 - Listings page (`client/src/pages/Listings.jsx`): add-listing form; inline editing of name, location, status, price, and unit; per-listing social-posts editor with the built-in four platforms plus free-text custom platforms. Price fields accept and live-format thousands separators.
 - Infrastructure: `contractRoute` in `server/index.js` now handles non-GET methods and validates request bodies against the contract (400 on a bad body, 503 on a query failure). `client/src/api.js` gained `sendJson` for endpoints with bodies and `:param` paths. `LocationBars` extracted to `client/src/components/LocationBars.jsx`, shared by Overview and Sales. `client/src/platforms.js` centralizes platform labels/colors with graceful fallbacks for unknown slugs.
 - Everything verified in the browser against the live database, including a full create → edit → link → unlink → delete cycle on a throwaway property (removed afterward; data left as found, except one deliberate correction noted below).
+- Post-close fix (same day): Supabase's pooler reaps idle connections; a query on a reaped connection failed with FATAL 57P01 (every save returned "Query failed"), and a reaped idle client crashed the server via an unhandled pool error. `server/db.js` now uses keepalive, a 10s idle timeout, a pool error listener, and a single retry on connection-death errors. Both failure paths reproduced and both protections verified against the live pooler.
 
 ## 2. Contract diff
 
