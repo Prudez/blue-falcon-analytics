@@ -10,11 +10,28 @@
 //     the API returns is the only id we trust.
 //
 // Pure fetch, no DB coupling: callers pass credentials in, data comes out.
+//
+// Two token flavors are supported, auto-detected by prefix:
+//   - "EAA..." — Meta/Facebook-login tokens → graph.facebook.com, and the
+//     numeric IG_USER_ID must be supplied.
+//   - "IG..."  — Instagram-business-login tokens (generated in the app
+//     dashboard under Instagram → API setup) → graph.instagram.com, where
+//     /me IS the Instagram account, so no separate id is needed.
 
-const GRAPH = "https://graph.facebook.com/v23.0";
+const VERSION = "v23.0";
 
-async function graphGet(path, params) {
-  const url = new URL(`${GRAPH}/${path}`);
+export function isInstagramLoginToken(token) {
+  return typeof token === "string" && token.startsWith("IG");
+}
+
+function graphBase(token) {
+  return isInstagramLoginToken(token)
+    ? `https://graph.instagram.com/${VERSION}`
+    : `https://graph.facebook.com/${VERSION}`;
+}
+
+async function graphGet(token, path, params) {
+  const url = new URL(`${graphBase(token)}/${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url);
   const body = await res.json();
@@ -27,13 +44,19 @@ async function graphGet(path, params) {
   return body;
 }
 
-// Account header: who we are and how many follow us.
+// Account header: who we are and how many follow us. With an Instagram-
+// login token the account is always /me and user_id carries the real id;
+// with a Facebook-login token the caller supplies the numeric id.
 export async function fetchAccount({ igUserId, accessToken }) {
-  const data = await graphGet(igUserId, {
-    fields: "username,followers_count,media_count",
+  const ig = isInstagramLoginToken(accessToken);
+  const data = await graphGet(accessToken, ig ? "me" : igUserId, {
+    fields: ig
+      ? "user_id,username,followers_count,media_count"
+      : "username,followers_count,media_count",
     access_token: accessToken,
   });
   return {
+    id: ig ? String(data.user_id ?? data.id ?? "") : String(igUserId),
     username: data.username,
     followers: data.followers_count ?? null,
     mediaCount: data.media_count ?? null,
@@ -44,14 +67,14 @@ export async function fetchAccount({ igUserId, accessToken }) {
 // ride along on the media object itself — no insights call needed for them.
 export async function fetchMedia({ igUserId, accessToken, maxPages = 4 }) {
   const media = [];
-  let path = `${igUserId}/media`;
+  let path = `${isInstagramLoginToken(accessToken) ? "me" : igUserId}/media`;
   let params = {
     fields: "id,caption,permalink,timestamp,media_type,like_count,comments_count",
     limit: "50",
     access_token: accessToken,
   };
   for (let page = 0; page < maxPages; page++) {
-    const body = await graphGet(path, params);
+    const body = await graphGet(accessToken, path, params);
     media.push(...(body.data ?? []));
     const next = body.paging?.next;
     if (!next) break;
@@ -68,7 +91,7 @@ export async function fetchMedia({ igUserId, accessToken, maxPages = 4 }) {
 export async function fetchInsights({ mediaId, accessToken }) {
   const wanted = ["reach", "views", "saved", "shares", "total_interactions"];
   try {
-    const body = await graphGet(`${mediaId}/insights`, {
+    const body = await graphGet(accessToken, `${mediaId}/insights`, {
       metric: wanted.join(","),
       access_token: accessToken,
     });

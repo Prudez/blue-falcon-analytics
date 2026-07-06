@@ -13,6 +13,7 @@ import {
   fetchMedia,
   fetchInsights,
   permalinkCode,
+  isInstagramLoginToken,
 } from "./fetchers/instagram.js";
 import {
   contract,
@@ -487,10 +488,19 @@ contractRoute(contract.instagramOverview, "instagram_overview_failed", async () 
 });
 
 contractRoute(contract.syncInstagram, "instagram_sync_failed", async () => {
-  if (!env.META_ACCESS_TOKEN || !env.IG_USER_ID) {
+  if (!env.META_ACCESS_TOKEN) {
     throw httpError(
       503,
-      "Instagram credentials are not configured. Set META_ACCESS_TOKEN and IG_USER_ID in .env, then restart the server."
+      "Instagram credentials are not configured. Set META_ACCESS_TOKEN in .env, then restart the server."
+    );
+  }
+  // Instagram-login tokens (IG... prefix) address the account as /me; only
+  // Facebook-login tokens (EAA... prefix) need the numeric IG_USER_ID.
+  const needsId = !isInstagramLoginToken(env.META_ACCESS_TOKEN);
+  if (needsId && (!env.IG_USER_ID || env.IG_USER_ID === "0")) {
+    throw httpError(
+      503,
+      "This token type needs IG_USER_ID (the numeric Instagram Business account id) set in .env."
     );
   }
   const creds = { igUserId: env.IG_USER_ID, accessToken: env.META_ACCESS_TOKEN };
@@ -509,7 +519,7 @@ contractRoute(contract.syncInstagram, "instagram_sync_failed", async () => {
      ON CONFLICT (platform, handle)
      DO UPDATE SET external_id = EXCLUDED.external_id, last_synced_at = now()
      RETURNING id`,
-    [account.username, env.IG_USER_ID]
+    [account.username, account.id]
   );
   const accountId = accountRow.rows[0].id;
   await query(
