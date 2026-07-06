@@ -434,6 +434,12 @@ body {
   font-size: 14px;
 }
 
+.sync-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
 .sync-bar {
   display: flex;
   align-items: center;

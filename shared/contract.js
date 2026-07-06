@@ -355,37 +355,45 @@ export const contract = {
     }),
   },
 
-  // Everything the Marketing page renders, in one call. `account` is null
-  // until the first successful sync. Metrics come from the LATEST capture
-  // per post; engagementRate is engagement/reach (null when reach is 0).
-  instagramOverview: {
+  // Everything the Marketing page renders, in one call, across all synced
+  // platforms. `accounts` is empty until the first successful sync. Post
+  // metrics come from the LATEST capture per post; engagementRate is
+  // engagement/reach (null when reach is 0).
+  marketingOverview: {
     method: "GET",
-    path: "/api/marketing/instagram",
+    path: "/api/marketing/overview",
     request: z.object({}),
     response: z.object({
-      account: z
-        .object({
+      accounts: z.array(
+        z.object({
+          platform: PlatformSlug,
           handle: z.string(),
           followers: z.number().int().nullable(),
           mediaCount: z.number().int().nullable(),
           lastSyncedAt: z.string().datetime().nullable(),
         })
-        .nullable(),
+      ),
       kpis: z.object({
         reach: z.number().int().nonnegative(),
         engagement: z.number().int().nonnegative(),
         engagementRate: z.number().nullable(),
         postsTracked: z.number().int().nonnegative(),
       }),
-      followerTrend: z.array(
+      followerTrends: z.array(
         z.object({
-          capturedAt: z.string().datetime(),
-          followers: z.number().int().nullable(),
+          platform: PlatformSlug,
+          points: z.array(
+            z.object({
+              capturedAt: z.string().datetime(),
+              followers: z.number().int().nullable(),
+            })
+          ),
         })
       ),
       topPosts: z.array(
         z.object({
           postId: z.number().int(),
+          platform: PlatformSlug,
           propertyName: z.string(),
           caption: z.string().nullable(),
           permalink: z.string().nullable(),
@@ -400,15 +408,33 @@ export const contract = {
     }),
   },
 
-  // Pull fresh data from the Instagram Graph API: account + followers
-  // snapshot, then match the account's media against platform_links by
-  // permalink, storing posts and a metrics capture for each match. Also
-  // refreshes analytics_cache/analytics_history so the Overview card and
-  // future trend charts stay current. Refuses with a clear message when
-  // META_ACCESS_TOKEN / IG_USER_ID are not configured.
+  // Both sync endpoints report the same shape: the account that was
+  // synced, how many linked posts matched the platform's own post list,
+  // and how many links found no match (wrong URL form or another
+  // account's post).
   syncInstagram: {
     method: "POST",
     path: "/api/marketing/sync/instagram",
+    request: z.object({}),
+    response: z.object({
+      account: z.object({
+        handle: z.string(),
+        followers: z.number().int().nullable(),
+        mediaCount: z.number().int().nullable(),
+      }),
+      postsMatched: z.number().int().nonnegative(),
+      metricsCaptured: z.number().int().nonnegative(),
+      linksUnmatched: z.number().int().nonnegative(),
+    }),
+  },
+
+  // Facebook Page sync, same pattern as Instagram: resolves the Page from
+  // FB_ACCESS_TOKEN (exchanging it for a long-lived token when
+  // META_APP_ID/META_APP_SECRET are set), matches the Page's posts against
+  // platform_links, and stores a metrics capture per match.
+  syncFacebook: {
+    method: "POST",
+    path: "/api/marketing/sync/facebook",
     request: z.object({}),
     response: z.object({
       account: z.object({

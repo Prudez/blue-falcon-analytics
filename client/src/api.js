@@ -52,5 +52,6 @@ export const listPlatformLinks = () => getJson(contract.listPlatformLinks);
 export const addPlatformLink = (body) => sendJson(contract.addPlatformLink, {}, body);
 export const deletePlatformLink = (id) => sendJson(contract.deletePlatformLink, { id }, {});
 export const createLead = (body) => sendJson(contract.createLead, {}, body);
-export const getInstagramOverview = () => getJson(contract.instagramOverview);
+export const getMarketingOverview = () => getJson(contract.marketingOverview);
 export const syncInstagram = () => sendJson(contract.syncInstagram, {}, {});
+export const syncFacebook = () => sendJson(contract.syncFacebook, {}, {});

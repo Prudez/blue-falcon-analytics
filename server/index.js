@@ -8,6 +8,9 @@ import express from "express";
 import cors from "cors";
 import { env } from "./env.js";
 import { query } from "./db.js";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   fetchAccount,
   fetchMedia,
@@ -15,6 +18,14 @@ import {
   permalinkCode,
   isInstagramLoginToken,
 } from "./fetchers/instagram.js";
+import {
+  exchangeForLongLivedToken,
+  resolvePage,
+  fetchPagePosts,
+  fetchPostInsights,
+  facebookPostKey,
+  facebookApiPostKeys,
+} from "./fetchers/facebook.js";
 import {
   contract,
   ErrorResponse,
@@ -405,46 +416,94 @@ contractRoute(contract.createLead, "create_lead_failed", async (req, input) => {
   };
 });
 
-// Latest capture per post, joined to its post and property. The shared
-// SELECT for both the KPIs and the top-posts list.
+// Latest capture per post, joined to its post and property, across every
+// platform. The shared SELECT for the KPIs, the top-posts list, and the
+// per-property rollups.
 const LATEST_POST_METRICS = `
   SELECT DISTINCT ON (pm.post_id)
          pm.post_id, pm.reach, pm.views, pm.likes, pm.comments,
          pm.shares, pm.saves,
          (COALESCE(pm.likes, 0) + COALESCE(pm.comments, 0)
           + COALESCE(pm.shares, 0) + COALESCE(pm.saves, 0)) AS engagement,
-         po.property_id, po.caption, po.permalink, po.published_at,
+         po.platform, po.property_id, po.caption, po.permalink, po.published_at,
          pr.name AS property_name
     FROM propiq.post_metrics pm
     JOIN propiq.posts po ON po.id = pm.post_id
     JOIN propiq.properties pr ON pr.id = po.property_id
-   WHERE po.platform = 'instagram'
    ORDER BY pm.post_id, pm.captured_at DESC`;
 
-contractRoute(contract.instagramOverview, "instagram_overview_failed", async () => {
-  const accountResult = await query(
-    `SELECT a.id, a.handle, a.last_synced_at,
-            m.followers, m.media_count
-       FROM propiq.platform_accounts a
-       LEFT JOIN LATERAL (
-         SELECT followers, media_count FROM propiq.account_metrics
-          WHERE platform_account_id = a.id
-          ORDER BY captured_at DESC LIMIT 1
-       ) m ON true
-      WHERE a.platform = 'instagram'
-      ORDER BY a.id LIMIT 1`
-  );
-  const acc = accountResult.rows[0];
+// After a sync, refresh the property-level rollups PropIQ's tables model
+// (analytics_cache feeds the Overview card; analytics_history accumulates
+// the trend series), for one platform and the properties it touched.
+async function refreshPropertyRollups(platform, propertyIds) {
+  for (const propertyId of propertyIds) {
+    const agg = await query(
+      `SELECT COALESCE(SUM(reach), 0)::int AS reach,
+              COALESCE(SUM(views), 0)::int AS views,
+              COALESCE(SUM(likes), 0)::int AS likes,
+              COALESCE(SUM(comments), 0)::int AS comments,
+              COALESCE(SUM(shares), 0)::int AS shares
+         FROM (${LATEST_POST_METRICS}) latest
+        WHERE property_id = $1 AND platform = $2`,
+      [propertyId, platform]
+    );
+    const a = agg.rows[0];
+    await query("DELETE FROM propiq.analytics_cache WHERE property_id = $1 AND platform = $2", [
+      propertyId,
+      platform,
+    ]);
+    await query(
+      `INSERT INTO propiq.analytics_cache
+         (property_id, platform, impressions, likes, comments, shares, clicks, reach, fetched_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, $7, now())`,
+      [propertyId, platform, a.views, a.likes, a.comments, a.shares, a.reach]
+    );
+    await query(
+      `INSERT INTO propiq.analytics_history
+         (property_id, platform, impressions, likes, comments, shares, clicks, reach, recorded_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 0, $7, now())`,
+      [propertyId, platform, a.views, a.likes, a.comments, a.shares, a.reach]
+    );
+  }
+}
 
-  const [latest, trend] = await Promise.all([
+// Rewrite one key in .env (used to persist the exchanged long-lived
+// Facebook token so the short Explorer token only has to survive once).
+function persistEnvValue(key, value) {
+  const envPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".env");
+  try {
+    const lines = fs
+      .readFileSync(envPath, "utf8")
+      .split(/\r?\n/)
+      .filter((line) => !line.startsWith(`${key}=`));
+    while (lines.length && lines[lines.length - 1] === "") lines.pop();
+    lines.push(`${key}=${value}`, "");
+    fs.writeFileSync(envPath, lines.join("\n"));
+  } catch (err) {
+    console.error(`Could not persist ${key} to .env:`, err.message);
+  }
+}
+
+contractRoute(contract.marketingOverview, "marketing_overview_failed", async () => {
+  const [accountsResult, latest, trendRows] = await Promise.all([
+    query(
+      `SELECT a.platform, a.handle, a.last_synced_at,
+              m.followers, m.media_count
+         FROM propiq.platform_accounts a
+         LEFT JOIN LATERAL (
+           SELECT followers, media_count FROM propiq.account_metrics
+            WHERE platform_account_id = a.id
+            ORDER BY captured_at DESC LIMIT 1
+         ) m ON true
+        ORDER BY a.platform, a.id`
+    ),
     query(LATEST_POST_METRICS),
-    acc
-      ? query(
-          `SELECT captured_at, followers FROM propiq.account_metrics
-            WHERE platform_account_id = $1 ORDER BY captured_at`,
-          [acc.id]
-        )
-      : { rows: [] },
+    query(
+      `SELECT a.platform, am.captured_at, am.followers
+         FROM propiq.account_metrics am
+         JOIN propiq.platform_accounts a ON a.id = am.platform_account_id
+        ORDER BY a.platform, am.captured_at`
+    ),
   ]);
 
   const reach = latest.rows.reduce((s, r) => s + (r.reach ?? 0), 0);
@@ -453,27 +512,36 @@ contractRoute(contract.instagramOverview, "instagram_overview_failed", async () 
     .sort((a, b) => Number(b.engagement) - Number(a.engagement))
     .slice(0, 5);
 
+  const trendsByPlatform = new Map();
+  for (const r of trendRows.rows) {
+    if (!trendsByPlatform.has(r.platform)) trendsByPlatform.set(r.platform, []);
+    trendsByPlatform.get(r.platform).push({
+      capturedAt: r.captured_at.toISOString(),
+      followers: r.followers,
+    });
+  }
+
   return {
-    account: acc
-      ? {
-          handle: acc.handle,
-          followers: acc.followers ?? null,
-          mediaCount: acc.media_count ?? null,
-          lastSyncedAt: acc.last_synced_at ? acc.last_synced_at.toISOString() : null,
-        }
-      : null,
+    accounts: accountsResult.rows.map((a) => ({
+      platform: a.platform,
+      handle: a.handle,
+      followers: a.followers ?? null,
+      mediaCount: a.media_count ?? null,
+      lastSyncedAt: a.last_synced_at ? a.last_synced_at.toISOString() : null,
+    })),
     kpis: {
       reach,
       engagement,
       engagementRate: reach > 0 ? engagement / reach : null,
       postsTracked: latest.rows.length,
     },
-    followerTrend: trend.rows.map((r) => ({
-      capturedAt: r.captured_at.toISOString(),
-      followers: r.followers,
+    followerTrends: [...trendsByPlatform.entries()].map(([platform, points]) => ({
+      platform,
+      points,
     })),
     topPosts: top.map((r) => ({
       postId: r.post_id,
+      platform: r.platform,
       propertyName: r.property_name,
       caption: r.caption,
       permalink: r.permalink,
@@ -595,37 +663,7 @@ contractRoute(contract.syncInstagram, "instagram_sync_failed", async () => {
     metricsCaptured++;
   }
 
-  // Refresh the property-level rollups PropIQ's tables already model, so
-  // the Overview comparison card and future trend charts stay truthful.
-  for (const propertyId of touchedProperties) {
-    const agg = await query(
-      `SELECT COALESCE(SUM(reach), 0)::int AS reach,
-              COALESCE(SUM(views), 0)::int AS views,
-              COALESCE(SUM(likes), 0)::int AS likes,
-              COALESCE(SUM(comments), 0)::int AS comments,
-              COALESCE(SUM(shares), 0)::int AS shares
-         FROM (${LATEST_POST_METRICS}) latest
-        WHERE property_id = $1`,
-      [propertyId]
-    );
-    const a = agg.rows[0];
-    await query(
-      `DELETE FROM propiq.analytics_cache WHERE property_id = $1 AND platform = 'instagram'`,
-      [propertyId]
-    );
-    await query(
-      `INSERT INTO propiq.analytics_cache
-         (property_id, platform, impressions, likes, comments, shares, clicks, reach, fetched_at)
-       VALUES ($1, 'instagram', $2, $3, $4, $5, 0, $6, now())`,
-      [propertyId, a.views, a.likes, a.comments, a.shares, a.reach]
-    );
-    await query(
-      `INSERT INTO propiq.analytics_history
-         (property_id, platform, impressions, likes, comments, shares, clicks, reach, recorded_at)
-       VALUES ($1, 'instagram', $2, $3, $4, $5, 0, $6, now())`,
-      [propertyId, a.views, a.likes, a.comments, a.shares, a.reach]
-    );
-  }
+  await refreshPropertyRollups("instagram", touchedProperties);
 
   return {
     account: {
@@ -633,6 +671,122 @@ contractRoute(contract.syncInstagram, "instagram_sync_failed", async () => {
       followers: account.followers,
       mediaCount: account.mediaCount,
     },
+    postsMatched,
+    metricsCaptured,
+    linksUnmatched,
+  };
+});
+
+contractRoute(contract.syncFacebook, "facebook_sync_failed", async () => {
+  if (!env.FB_ACCESS_TOKEN) {
+    throw httpError(
+      503,
+      "Facebook credentials are not configured. Run scripts/add-facebook-keys.ps1, then restart the server."
+    );
+  }
+
+  // Trade the stored token for a long-lived one when app credentials are
+  // available, and persist it so a short Explorer token only has to
+  // survive this one sync.
+  let userToken = env.FB_ACCESS_TOKEN;
+  const exchanged = await exchangeForLongLivedToken({
+    token: userToken,
+    appId: env.META_APP_ID,
+    appSecret: env.META_APP_SECRET,
+  });
+  if (exchanged && exchanged !== userToken) {
+    userToken = exchanged;
+    env.FB_ACCESS_TOKEN = exchanged;
+    persistEnvValue("FB_ACCESS_TOKEN", exchanged);
+  }
+
+  let page;
+  try {
+    page = await resolvePage({ userToken, pageId: env.FB_PAGE_ID });
+  } catch (err) {
+    throw httpError(502, err.message);
+  }
+
+  const accountRow = await query(
+    `INSERT INTO propiq.platform_accounts (platform, handle, external_id, last_synced_at)
+     VALUES ('facebook', $1, $2, now())
+     ON CONFLICT (platform, handle)
+     DO UPDATE SET external_id = EXCLUDED.external_id, last_synced_at = now()
+     RETURNING id`,
+    [page.name, page.id]
+  );
+  const accountId = accountRow.rows[0].id;
+  await query(
+    "INSERT INTO propiq.account_metrics (platform_account_id, followers) VALUES ($1, $2)",
+    [accountId, page.followers]
+  );
+
+  const links = await query(
+    "SELECT id, property_id, post_url FROM propiq.platform_links WHERE platform = 'facebook'"
+  );
+  const pagePosts = links.rows.length
+    ? await fetchPagePosts({ pageId: page.id, pageToken: page.pageToken })
+    : [];
+  const postsByKey = new Map();
+  for (const p of pagePosts) {
+    for (const key of facebookApiPostKeys(p)) postsByKey.set(key, p);
+  }
+
+  let postsMatched = 0;
+  let metricsCaptured = 0;
+  let linksUnmatched = 0;
+  const touchedProperties = new Set();
+
+  for (const link of links.rows) {
+    const key = facebookPostKey(link.post_url);
+    const p = key ? postsByKey.get(key) : null;
+    if (!p) {
+      linksUnmatched++;
+      continue;
+    }
+    postsMatched++;
+    touchedProperties.add(link.property_id);
+
+    const postRow = await query(
+      `INSERT INTO propiq.posts
+         (property_id, platform_account_id, platform, external_post_id,
+          permalink, caption, published_at)
+       VALUES ($1, $2, 'facebook', $3, $4, $5, $6)
+       ON CONFLICT (platform, external_post_id)
+       DO UPDATE SET caption = EXCLUDED.caption, permalink = EXCLUDED.permalink
+       RETURNING id`,
+      [
+        link.property_id,
+        accountId,
+        p.id,
+        p.permalink_url ?? null,
+        p.message ?? null,
+        p.created_time ?? null,
+      ]
+    );
+    await query("UPDATE propiq.platform_links SET post_id = $1 WHERE id = $2", [p.id, link.id]);
+
+    const insights = await fetchPostInsights({ postId: p.id, pageToken: page.pageToken });
+    await query(
+      `INSERT INTO propiq.post_metrics
+         (post_id, reach, views, likes, comments, shares, source)
+       VALUES ($1, $2, $3, $4, $5, $6, 'api')`,
+      [
+        postRow.rows[0].id,
+        insights.reach,
+        insights.views,
+        p.likes?.summary?.total_count ?? null,
+        p.comments?.summary?.total_count ?? null,
+        p.shares?.count ?? null,
+      ]
+    );
+    metricsCaptured++;
+  }
+
+  await refreshPropertyRollups("facebook", touchedProperties);
+
+  return {
+    account: { handle: page.name, followers: page.followers, mediaCount: null },
     postsMatched,
     metricsCaptured,
     linksUnmatched,

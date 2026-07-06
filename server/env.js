@@ -43,11 +43,21 @@ const schema = z.object({
   SUPABASE_ANON_KEY: optional(z.string()),
   SUPABASE_SERVICE_ROLE_KEY: optional(z.string()),
 
-  // Meta / Instagram Graph API (the existing "PropIQ Sync" Meta app).
+  // Meta / Instagram Graph API (the "Blue Falcon Analytics" Meta app).
   // Optional so the app runs without marketing sync; the sync endpoint
   // refuses with a clear message when these are unset.
   META_ACCESS_TOKEN: optional(z.string()),
   IG_USER_ID: optional(z.string().regex(/^\d+$/, "IG_USER_ID is the numeric Instagram Business account id")),
+
+  // Facebook Page sync, same Meta app. FB_ACCESS_TOKEN is a Facebook-login
+  // user token; with META_APP_ID + META_APP_SECRET set, the server
+  // exchanges it for a long-lived one on first sync and persists that back
+  // to .env, so the Explorer's 1-2 hour token only has to survive one sync.
+  // FB_PAGE_ID picks the Page when the account manages more than one.
+  FB_ACCESS_TOKEN: optional(z.string()),
+  META_APP_ID: optional(z.string().regex(/^\d+$/, "META_APP_ID is the numeric app id")),
+  META_APP_SECRET: optional(z.string()),
+  FB_PAGE_ID: optional(z.string().regex(/^\d+$/, "FB_PAGE_ID is the numeric Page id")),
 });
 
 const parsed = schema.safeParse(process.env);
