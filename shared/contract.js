@@ -107,6 +107,34 @@ export const contract = {
     }),
   },
 
+  // Whether a login is required (APP_PASSWORD set server-side) and whether
+  // this client's token currently passes. Open endpoint: the client needs
+  // it to decide whether to show the login screen.
+  authStatus: {
+    method: "GET",
+    path: "/api/auth/status",
+    request: z.object({}),
+    response: z.object({
+      required: z.boolean(),
+      authenticated: z.boolean(),
+    }),
+  },
+
+  // Trade the password for a signed token (~30 days). Every other endpoint
+  // except health and auth requires it as `Authorization: Bearer <token>`
+  // when auth is enabled.
+  login: {
+    method: "POST",
+    path: "/api/auth/login",
+    request: z.object({
+      password: z.string().min(1, "Enter the password."),
+    }),
+    response: z.object({
+      token: z.string(),
+      expiresAt: z.string().datetime(),
+    }),
+  },
+
   // Overview top row: one call, all four numbers.
   kpiSummary: {
     method: "GET",

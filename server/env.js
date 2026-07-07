@@ -49,6 +49,10 @@ const schema = z.object({
   META_ACCESS_TOKEN: optional(z.string()),
   IG_USER_ID: optional(z.string().regex(/^\d+$/, "IG_USER_ID is the numeric Instagram Business account id")),
 
+  // Single-user login. Unset = auth off (local development). A public
+  // deployment must set this; 12+ characters keeps brute force boring.
+  APP_PASSWORD: optional(z.string().min(12, "APP_PASSWORD must be at least 12 characters")),
+
   // Facebook Page sync, same Meta app. FB_ACCESS_TOKEN is a Facebook-login
   // user token; with META_APP_ID + META_APP_SECRET set, the server
   // exchanges it for a long-lived one on first sync and persists that back

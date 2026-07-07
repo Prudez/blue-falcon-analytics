@@ -491,3 +491,40 @@ body {
   color: var(--text-muted);
   font-size: 14px;
 }
+
+/* ---- Login ---- */
+
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--navy);
+}
+
+.login-card {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px;
+}
+
+.login-brand {
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--navy);
+}
+
+.login-brand span {
+  color: #4d7cc4;
+}
+
+.login-input {
+  width: 100%;
+}
+
+.login-button {
+  width: 100%;
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { getHealth } from "./api.js";
+import { getHealth, getAuthStatus } from "./api.js";
+import Login from "./pages/Login.jsx";
 import Overview from "./pages/Overview.jsx";
 import Sales from "./pages/Sales.jsx";
 import Listings from "./pages/Listings.jsx";
@@ -15,14 +16,26 @@ const PAGES = [
 export default function App() {
   const [page, setPage] = useState("overview");
   const [health, setHealth] = useState(null);
+  // null = still checking; true = show the app; false = show the login.
+  const [authed, setAuthed] = useState(null);
 
   useEffect(() => {
+    getAuthStatus()
+      .then((s) => setAuthed(!s.required || s.authenticated))
+      .catch(() => setAuthed(true)); // backend down: let the app render its own error states
     getHealth()
       .then(() => setHealth("ok"))
       .catch(() => setHealth("down"));
   }, []);
 
   const current = PAGES.find((p) => p.key === page);
+
+  if (authed === null) {
+    return <p className="loading login-screen">Checking session…</p>;
+  }
+  if (!authed) {
+    return <Login onSuccess={() => setAuthed(true)} />;
+  }
 
   return (
     <div className="app">

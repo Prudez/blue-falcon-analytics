@@ -26,6 +26,7 @@ import {
   facebookPostKey,
   facebookApiPostKeys,
 } from "./fetchers/facebook.js";
+import { authEnabled, checkPassword, issueToken, verifyToken } from "./auth.js";
 import {
   contract,
   ErrorResponse,
@@ -99,6 +100,38 @@ function httpError(status, message) {
   err.status = status;
   return err;
 }
+
+function bearerToken(req) {
+  return (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+}
+
+contractRoute(contract.authStatus, "auth_status_failed", async (req) => ({
+  required: authEnabled(),
+  authenticated: !authEnabled() || verifyToken(bearerToken(req)),
+}));
+
+contractRoute(contract.login, "login_failed", async (req, input) => {
+  if (!authEnabled()) {
+    throw httpError(400, "No password is configured; login is not required.");
+  }
+  if (!checkPassword(input.password)) {
+    throw httpError(401, "Wrong password.");
+  }
+  return issueToken();
+});
+
+// The gate. Registered AFTER health and the auth endpoints (Express runs
+// middleware in registration order), so those stay reachable; everything
+// registered below requires a valid token whenever a password is set.
+app.use("/api", (req, res, next) => {
+  if (!authEnabled()) return next();
+  if (verifyToken(bearerToken(req))) return next();
+  const body = ErrorResponse.parse({
+    error: "unauthorized",
+    message: "Sign in to continue.",
+  });
+  res.status(401).json(body);
+});
 
 // Maps a properties row to the contract's Property shape.
 function toProperty(r) {

@@ -9,8 +9,22 @@ import { contract } from "../../shared/contract.js";
 
 const API_URL = import.meta.env.VITE_API_URL;
 
+// The signed session token, when a password is configured server-side.
+// localStorage survives reloads; the token self-expires server-side.
+let authToken = localStorage.getItem("bfa_token");
+
+export function setAuthToken(token) {
+  authToken = token;
+  if (token) localStorage.setItem("bfa_token", token);
+  else localStorage.removeItem("bfa_token");
+}
+
+function authHeaders(extra = {}) {
+  return authToken ? { ...extra, Authorization: `Bearer ${authToken}` } : extra;
+}
+
 async function getJson(endpoint) {
-  const res = await fetch(`${API_URL}${endpoint.path}`);
+  const res = await fetch(`${API_URL}${endpoint.path}`, { headers: authHeaders() });
   const body = await res.json();
   if (!res.ok) {
     throw new Error(body.message ?? `GET ${endpoint.path} failed`);
@@ -25,7 +39,7 @@ async function sendJson(endpoint, params, body) {
   const path = endpoint.path.replace(/:(\w+)/g, (_, key) => encodeURIComponent(params[key]));
   const res = await fetch(`${API_URL}${path}`, {
     method: endpoint.method,
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(endpoint.request.parse(body)),
   });
   const data = await res.json();
@@ -36,6 +50,8 @@ async function sendJson(endpoint, params, body) {
 }
 
 export const getHealth = () => getJson(contract.health);
+export const getAuthStatus = () => getJson(contract.authStatus);
+export const login = (password) => sendJson(contract.login, {}, { password });
 export const getKpiSummary = () => getJson(contract.kpiSummary);
 export const getListingsByStatus = () => getJson(contract.listingsByStatus);
 export const getListingsByLocation = () => getJson(contract.listingsByLocation);
