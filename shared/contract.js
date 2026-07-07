@@ -448,6 +448,98 @@ export const contract = {
     }),
   },
 
+  // Manual-entry state for platforms without an API sync (TikTok, X, and
+  // custom platforms): every linked post with its latest recorded numbers,
+  // and the manually-tracked accounts. Instagram/Facebook are excluded —
+  // their sync owns their numbers.
+  manualEntryState: {
+    method: "GET",
+    path: "/api/marketing/manual",
+    request: z.object({}),
+    response: z.object({
+      entries: z.array(
+        z.object({
+          linkId: z.number().int(),
+          platform: PlatformSlug,
+          propertyName: z.string(),
+          postUrl: z.string(),
+          latest: z
+            .object({
+              capturedAt: z.string().datetime(),
+              views: z.number().int().nullable(),
+              reach: z.number().int().nullable(),
+              likes: z.number().int().nullable(),
+              comments: z.number().int().nullable(),
+              shares: z.number().int().nullable(),
+            })
+            .nullable(),
+        })
+      ),
+      accounts: z.array(
+        z.object({
+          platform: PlatformSlug,
+          handle: z.string(),
+          followers: z.number().int().nullable(),
+          lastUpdatedAt: z.string().datetime().nullable(),
+        })
+      ),
+    }),
+  },
+
+  // Record a metrics capture for a manually-tracked post. Each save adds a
+  // new time-series row (source='manual'), exactly like a sync capture, so
+  // trends accumulate. At least one number is required.
+  recordManualMetrics: {
+    method: "POST",
+    path: "/api/marketing/manual/metrics",
+    request: z
+      .object({
+        linkId: z.number().int(),
+        views: z.number().int().nonnegative().nullable().optional(),
+        reach: z.number().int().nonnegative().nullable().optional(),
+        likes: z.number().int().nonnegative().nullable().optional(),
+        comments: z.number().int().nonnegative().nullable().optional(),
+        shares: z.number().int().nonnegative().nullable().optional(),
+      })
+      .refine(
+        (b) => ["views", "reach", "likes", "comments", "shares"].some((k) => b[k] != null),
+        { message: "Enter at least one number." }
+      ),
+    response: z.object({
+      linkId: z.number().int(),
+      platform: PlatformSlug,
+      propertyName: z.string(),
+      postUrl: z.string(),
+      latest: z.object({
+        capturedAt: z.string().datetime(),
+        views: z.number().int().nullable(),
+        reach: z.number().int().nullable(),
+        likes: z.number().int().nullable(),
+        comments: z.number().int().nullable(),
+        shares: z.number().int().nullable(),
+      }),
+    }),
+  },
+
+  // Record a follower count for a manually-tracked account (creates the
+  // account row on first use). Snapshots accumulate into the same
+  // follower-trend series the synced platforms use.
+  recordManualFollowers: {
+    method: "POST",
+    path: "/api/marketing/manual/followers",
+    request: z.object({
+      platform: PlatformSlug,
+      handle: z.string().min(1, "The account needs a handle."),
+      followers: z.number().int().nonnegative(),
+    }),
+    response: z.object({
+      platform: PlatformSlug,
+      handle: z.string(),
+      followers: z.number().int(),
+      lastUpdatedAt: z.string().datetime(),
+    }),
+  },
+
   // Location breakdown widget. Properties with no location yet are grouped
   // under the literal label "Unspecified" by the backend.
   listingsByLocation: {

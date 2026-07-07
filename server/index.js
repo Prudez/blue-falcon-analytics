@@ -508,6 +508,12 @@ contractRoute(contract.marketingOverview, "marketing_overview_failed", async () 
 
   const reach = latest.rows.reduce((s, r) => s + (r.reach ?? 0), 0);
   const engagement = latest.rows.reduce((s, r) => s + Number(r.engagement), 0);
+  // The rate only counts posts that HAVE a reach figure; posts with
+  // engagement but no reach (common for manual entries) would otherwise
+  // inflate the numerator against a denominator they never joined.
+  const withReach = latest.rows.filter((r) => (r.reach ?? 0) > 0);
+  const rateReach = withReach.reduce((s, r) => s + r.reach, 0);
+  const rateEngagement = withReach.reduce((s, r) => s + Number(r.engagement), 0);
   const top = [...latest.rows]
     .sort((a, b) => Number(b.engagement) - Number(a.engagement))
     .slice(0, 5);
@@ -532,7 +538,7 @@ contractRoute(contract.marketingOverview, "marketing_overview_failed", async () 
     kpis: {
       reach,
       engagement,
-      engagementRate: reach > 0 ? engagement / reach : null,
+      engagementRate: rateReach > 0 ? rateEngagement / rateReach : null,
       postsTracked: latest.rows.length,
     },
     followerTrends: [...trendsByPlatform.entries()].map(([platform, points]) => ({
@@ -790,6 +796,136 @@ contractRoute(contract.syncFacebook, "facebook_sync_failed", async () => {
     postsMatched,
     metricsCaptured,
     linksUnmatched,
+  };
+});
+
+// Platforms whose numbers come from an API sync; everything else is
+// hand-entered on the Marketing page.
+const SYNCED_PLATFORMS = ["instagram", "facebook"];
+
+function toManualEntry(r) {
+  return {
+    linkId: r.link_id,
+    platform: r.platform,
+    propertyName: r.property_name,
+    postUrl: r.post_url,
+    latest: r.captured_at
+      ? {
+          capturedAt: r.captured_at.toISOString(),
+          views: r.views,
+          reach: r.reach,
+          likes: r.likes,
+          comments: r.comments,
+          shares: r.shares,
+        }
+      : null,
+  };
+}
+
+const MANUAL_ENTRY_SELECT = `
+  SELECT pl.id AS link_id, pl.platform, pl.post_url, pr.name AS property_name,
+         lm.captured_at, lm.views, lm.reach, lm.likes, lm.comments, lm.shares
+    FROM propiq.platform_links pl
+    JOIN propiq.properties pr ON pr.id = pl.property_id
+    LEFT JOIN propiq.posts po
+      ON po.platform = pl.platform AND po.external_post_id = pl.post_url
+    LEFT JOIN LATERAL (
+      SELECT captured_at, views, reach, likes, comments, shares
+        FROM propiq.post_metrics WHERE post_id = po.id
+       ORDER BY captured_at DESC LIMIT 1
+    ) lm ON true
+   WHERE pl.platform <> ALL($1)`;
+
+contractRoute(contract.manualEntryState, "manual_entry_state_failed", async () => {
+  const [entries, accounts] = await Promise.all([
+    query(`${MANUAL_ENTRY_SELECT} ORDER BY pr.name, pl.platform, pl.id`, [SYNCED_PLATFORMS]),
+    query(
+      `SELECT a.platform, a.handle, a.last_synced_at, m.followers
+         FROM propiq.platform_accounts a
+         LEFT JOIN LATERAL (
+           SELECT followers FROM propiq.account_metrics
+            WHERE platform_account_id = a.id
+            ORDER BY captured_at DESC LIMIT 1
+         ) m ON true
+        WHERE a.platform <> ALL($1)
+        ORDER BY a.platform, a.handle`,
+      [SYNCED_PLATFORMS]
+    ),
+  ]);
+  return {
+    entries: entries.rows.map(toManualEntry),
+    accounts: accounts.rows.map((a) => ({
+      platform: a.platform,
+      handle: a.handle,
+      followers: a.followers ?? null,
+      lastUpdatedAt: a.last_synced_at ? a.last_synced_at.toISOString() : null,
+    })),
+  };
+});
+
+contractRoute(contract.recordManualMetrics, "record_manual_metrics_failed", async (req, input) => {
+  const linkResult = await query(
+    `SELECT pl.id, pl.platform, pl.post_url, pl.property_id
+       FROM propiq.platform_links pl WHERE pl.id = $1`,
+    [input.linkId]
+  );
+  const link = linkResult.rows[0];
+  if (!link) throw httpError(404, `Post link ${input.linkId} no longer exists.`);
+  if (SYNCED_PLATFORMS.includes(link.platform)) {
+    throw httpError(400, `${link.platform} metrics come from the sync, not manual entry.`);
+  }
+
+  // Manual posts use the stored URL as their external id — stable, unique
+  // per platform, and never confused with a real API id.
+  const postRow = await query(
+    `INSERT INTO propiq.posts (property_id, platform, external_post_id, permalink)
+     VALUES ($1, $2, $3, $3)
+     ON CONFLICT (platform, external_post_id) DO UPDATE SET permalink = EXCLUDED.permalink
+     RETURNING id`,
+    [link.property_id, link.platform, link.post_url]
+  );
+  await query(
+    `INSERT INTO propiq.post_metrics
+       (post_id, views, reach, likes, comments, shares, source)
+     VALUES ($1, $2, $3, $4, $5, $6, 'manual')`,
+    [
+      postRow.rows[0].id,
+      input.views ?? null,
+      input.reach ?? null,
+      input.likes ?? null,
+      input.comments ?? null,
+      input.shares ?? null,
+    ]
+  );
+  await refreshPropertyRollups(link.platform, [link.property_id]);
+
+  const fresh = await query(`${MANUAL_ENTRY_SELECT} AND pl.id = $2`, [
+    SYNCED_PLATFORMS,
+    link.id,
+  ]);
+  return toManualEntry(fresh.rows[0]);
+});
+
+contractRoute(contract.recordManualFollowers, "record_manual_followers_failed", async (req, input) => {
+  if (SYNCED_PLATFORMS.includes(input.platform)) {
+    throw httpError(400, `${input.platform} followers come from the sync, not manual entry.`);
+  }
+  const accountRow = await query(
+    `INSERT INTO propiq.platform_accounts (platform, handle, last_synced_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (platform, handle) DO UPDATE SET last_synced_at = now()
+     RETURNING id, last_synced_at`,
+    [input.platform, input.handle]
+  );
+  await query(
+    "INSERT INTO propiq.account_metrics (platform_account_id, followers) VALUES ($1, $2)",
+    [accountRow.rows[0].id, input.followers]
+  );
+  return {
+    platform: input.platform,
+    handle: input.handle,
+    followers: input.followers,
+    lastUpdatedAt: accountRow.rows[0].last_synced_at.toISOString(),
   };
 });
 

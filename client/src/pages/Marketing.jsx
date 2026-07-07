@@ -8,7 +8,14 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { getMarketingOverview, syncInstagram, syncFacebook } from "../api.js";
+import {
+  getMarketingOverview,
+  syncInstagram,
+  syncFacebook,
+  getManualEntryState,
+  recordManualMetrics,
+  recordManualFollowers,
+} from "../api.js";
 import { platformLabel, platformColor } from "../platforms.js";
 
 // The platforms that have a working API sync today. TikTok and X arrive
@@ -175,14 +182,241 @@ function TopPostsCard({ posts }) {
   );
 }
 
+const digitsOnly = (s) => s.replace(/[^\d]/g, "");
+
+// One manually-tracked post: five number fields, saved together as a new
+// time-series capture.
+function ManualMetricsRow({ entry, onSaved, onError }) {
+  const fields = ["views", "reach", "likes", "comments", "shares"];
+  const [drafts, setDrafts] = useState(() =>
+    Object.fromEntries(fields.map((f) => [f, entry.latest?.[f] ?? ""]))
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    const body = { linkId: entry.linkId };
+    let hasValue = false;
+    for (const f of fields) {
+      const digits = digitsOnly(String(drafts[f]));
+      body[f] = digits === "" ? null : Number(digits);
+      if (body[f] !== null) hasValue = true;
+    }
+    if (!hasValue) {
+      onError("Enter at least one number before saving.");
+      return;
+    }
+    setSaving(true);
+    try {
+      onSaved(await recordManualMetrics(body));
+      onError(null);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <tr className={saving ? "row-saving" : ""}>
+      <td>
+        <span className="link-platform">{platformLabel(entry.platform)}</span>
+        <span className="table-sub">{entry.propertyName}</span>
+      </td>
+      <td className="caption-cell">
+        <a href={entry.postUrl} target="_blank" rel="noreferrer">
+          {entry.postUrl.replace(/^https?:\/\/(www\.)?/, "").slice(0, 40)}…
+        </a>
+        {entry.latest && (
+          <span className="table-sub">
+            last entered{" "}
+            {new Date(entry.latest.capturedAt).toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+            })}
+          </span>
+        )}
+      </td>
+      {fields.map((f) => (
+        <td key={f}>
+          <input
+            className="table-input metric-input"
+            type="text"
+            inputMode="numeric"
+            placeholder="—"
+            value={drafts[f]}
+            disabled={saving}
+            onChange={(e) => setDrafts((d) => ({ ...d, [f]: digitsOnly(e.target.value) }))}
+          />
+        </td>
+      ))}
+      <td>
+        <button className="button-primary" type="button" disabled={saving} onClick={save}>
+          Save
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+// Follower counts for manually-tracked accounts (TikTok, X, custom).
+function ManualFollowersForm({ accounts, onSaved, onError }) {
+  const [platform, setPlatform] = useState("tiktok");
+  const [customSlug, setCustomSlug] = useState("");
+  const [handle, setHandle] = useState("");
+  const [followers, setFollowers] = useState("");
+  const [saving, setSaving] = useState(false);
+  const CUSTOM = "__custom__";
+
+  async function submit(e) {
+    e.preventDefault();
+    const slug =
+      platform === CUSTOM ? customSlug.trim().toLowerCase().replace(/\s+/g, "_") : platform;
+    const digits = digitsOnly(followers);
+    if (!handle.trim() || digits === "") {
+      onError("The follower update needs a handle and a number.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await recordManualFollowers({
+        platform: slug,
+        handle: handle.trim(),
+        followers: Number(digits),
+      });
+      onError(null);
+      setFollowers("");
+      onSaved();
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="add-link-form" onSubmit={submit}>
+      <select
+        className="table-select"
+        value={platform}
+        disabled={saving}
+        onChange={(e) => {
+          setPlatform(e.target.value);
+          const existing = accounts.find((a) => a.platform === e.target.value);
+          if (existing) setHandle(existing.handle);
+        }}
+      >
+        <option value="tiktok">TikTok</option>
+        <option value="twitter">X</option>
+        <option value={CUSTOM}>Other platform…</option>
+      </select>
+      {platform === CUSTOM && (
+        <input
+          className="table-input"
+          type="text"
+          placeholder="Platform name"
+          value={customSlug}
+          disabled={saving}
+          onChange={(e) => setCustomSlug(e.target.value)}
+        />
+      )}
+      <input
+        className="table-input"
+        type="text"
+        placeholder="@handle"
+        value={handle}
+        disabled={saving}
+        onChange={(e) => setHandle(e.target.value)}
+      />
+      <input
+        className="table-input"
+        type="text"
+        inputMode="numeric"
+        placeholder="Followers"
+        value={followers}
+        disabled={saving}
+        onChange={(e) => setFollowers(digitsOnly(e.target.value))}
+      />
+      <button className="button-primary" type="submit" disabled={saving}>
+        Update followers
+      </button>
+    </form>
+  );
+}
+
+function ManualEntryCard({ state, onEntrySaved, onFollowersSaved, onError }) {
+  return (
+    <div className="card full-width">
+      <h2>
+        Manual Metrics
+        <span className="card-note">TikTok, X, and other platforms without an API sync</span>
+      </h2>
+      {state.entries.length === 0 ? (
+        <p className="loading">
+          Link TikTok or X posts to listings on the Listings page, then enter their numbers
+          here — they feed the same charts as the synced platforms.
+        </p>
+      ) : (
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Platform</th>
+              <th>Post</th>
+              <th>Views</th>
+              <th>Reach</th>
+              <th>Likes</th>
+              <th>Comments</th>
+              <th>Shares</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.entries.map((entry) => (
+              <ManualMetricsRow
+                key={entry.linkId}
+                entry={entry}
+                onSaved={onEntrySaved}
+                onError={onError}
+              />
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="manual-followers">
+        {state.accounts.length > 0 && (
+          <p className="card-hint">
+            {state.accounts
+              .map(
+                (a) =>
+                  `${platformLabel(a.platform)} ${a.handle}: ${
+                    a.followers === null ? "—" : a.followers.toLocaleString()
+                  } followers`
+              )
+              .join(" · ")}
+          </p>
+        )}
+        <ManualFollowersForm
+          accounts={state.accounts}
+          onSaved={onFollowersSaved}
+          onError={onError}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function Marketing() {
   const [overview, setOverview] = useState(null);
+  const [manual, setManual] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [manualError, setManualError] = useState(null);
   const [syncState, setSyncState] = useState({ platform: null, message: null, error: null });
 
   function load() {
-    return getMarketingOverview()
-      .then(setOverview)
+    return Promise.all([getMarketingOverview(), getManualEntryState()])
+      .then(([o, m]) => {
+        setOverview(o);
+        setManual(m);
+      })
       .catch((err) => setLoadError(err.message));
   }
 
@@ -214,7 +448,7 @@ export default function Marketing() {
   if (loadError) {
     return <div className="error-banner">Could not load marketing data: {loadError}</div>;
   }
-  if (!overview) {
+  if (!overview || !manual) {
     return <p className="loading">Loading marketing data…</p>;
   }
 
@@ -251,6 +485,13 @@ export default function Marketing() {
         <FollowerTrendCard trends={followerTrends} />
         <TopPostsCard posts={topPosts} />
       </div>
+      {manualError && <div className="error-banner">Manual entry: {manualError}</div>}
+      <ManualEntryCard
+        state={manual}
+        onEntrySaved={() => load()}
+        onFollowersSaved={() => load()}
+        onError={setManualError}
+      />
     </>
   );
 }
