@@ -73,13 +73,16 @@ function FollowerTrendCard({ trends }) {
     .filter((t) => t.points.length > 0);
 
   const totalPoints = withData.reduce((s, t) => s + t.points.length, 0);
+  // Flatten, sort chronologically across platforms, then merge by day —
+  // otherwise the axis follows insertion order, not time.
+  const flat = withData
+    .flatMap((t) => t.points.map((p) => ({ ...p, platform: t.platform })))
+    .sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
   const byDay = new Map();
-  for (const t of withData) {
-    for (const p of t.points) {
-      const label = dateLabel(p.capturedAt);
-      if (!byDay.has(label)) byDay.set(label, { label });
-      byDay.get(label)[t.platform] = p.followers;
-    }
+  for (const p of flat) {
+    const label = dateLabel(p.capturedAt);
+    if (!byDay.has(label)) byDay.set(label, { label });
+    byDay.get(label)[p.platform] = p.followers;
   }
   const data = [...byDay.values()];
 
