@@ -62,7 +62,10 @@ export async function syncAll(
 
       for (const listing of listings) {
         const portalListingId = await upsertPortalListing(portalId, listing);
-        await upsertPortalMetrics(portalListingId, listing.metrics, "scrape");
+        await upsertPortalMetrics(portalListingId, listing.metrics, {
+          source: "scrape",
+          raw: listing.raw ?? null,
+        });
       }
 
       await finishRun(runId, { status: "ok", listingsSeen: listings.length });

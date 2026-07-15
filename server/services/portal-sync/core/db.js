@@ -63,13 +63,19 @@ export async function upsertPortalListing(portalId, listing) {
 // from insert time; the ON CONFLICT target is 005's expression index, so a
 // second run on the same UTC day overwrites rather than inserting a
 // duplicate. A metric the portal does not provide stays NULL — never 0.
-export async function upsertPortalMetrics(portalListingId, metrics, source = "scrape") {
+// `raw` (migration 007) holds the per-capture snapshot: the row's HTML for
+// selector-diffing, boost status, and any split views/impressions terms.
+export async function upsertPortalMetrics(
+  portalListingId,
+  metrics,
+  { source = "scrape", raw = null } = {}
+) {
   const m = metrics ?? {};
   await query(
     `INSERT INTO propiq.portal_listing_metrics
        (portal_listing_id, views, saves, contact_clicks,
-        phone_reveals, whatsapp_clicks, inquiries, source)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        phone_reveals, whatsapp_clicks, inquiries, source, raw)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (portal_listing_id, ((captured_at AT TIME ZONE 'UTC')::date))
      DO UPDATE SET views = EXCLUDED.views,
                    saves = EXCLUDED.saves,
@@ -77,7 +83,8 @@ export async function upsertPortalMetrics(portalListingId, metrics, source = "sc
                    phone_reveals = EXCLUDED.phone_reveals,
                    whatsapp_clicks = EXCLUDED.whatsapp_clicks,
                    inquiries = EXCLUDED.inquiries,
-                   source = EXCLUDED.source`,
+                   source = EXCLUDED.source,
+                   raw = EXCLUDED.raw`,
     [
       portalListingId,
       m.views ?? null,
@@ -87,6 +94,7 @@ export async function upsertPortalMetrics(portalListingId, metrics, source = "sc
       m.whatsapp_clicks ?? null,
       m.inquiries ?? null,
       source,
+      raw == null ? null : JSON.stringify(raw),
     ]
   );
 }
