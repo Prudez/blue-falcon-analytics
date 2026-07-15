@@ -476,6 +476,28 @@ export const contract = {
     }),
   },
 
+  // Portal-sync manual trigger (sync-integration workstream, Phase A).
+  // Runs one pass across every registered property portal and returns the
+  // per-portal outcome that landed in portal_sync_runs. A portal with no
+  // credentials is reported as "skipped", not an error; a fetcher failure
+  // is "error" with a message and does not stop the other portals. Auth is
+  // enforced by the /api gate, same as the other sync routes.
+  portalSyncRun: {
+    method: "POST",
+    path: "/api/portal-sync/run",
+    request: z.object({}),
+    response: z.object({
+      runs: z.array(
+        z.object({
+          portal: z.string(),
+          status: z.enum(["ok", "skipped", "error"]),
+          listings: z.number().int().nonnegative().nullable(),
+          error: z.string().nullable(),
+        })
+      ),
+    }),
+  },
+
   // Manual-entry state for platforms without an API sync (TikTok, X, and
   // custom platforms): every linked post with its latest recorded numbers,
   // and the manually-tracked accounts. Instagram/Facebook are excluded —

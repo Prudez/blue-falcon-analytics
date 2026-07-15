@@ -27,6 +27,7 @@ import {
   facebookApiPostKeys,
 } from "./fetchers/facebook.js";
 import { authEnabled, checkPassword, issueToken, verifyToken } from "./auth.js";
+import { runPortalSync, startPortalCron } from "./services/portal-sync/index.js";
 import {
   contract,
   ErrorResponse,
@@ -973,6 +974,16 @@ contractRoute(contract.listingsByLocation, "listings_by_location_failed", async 
   return { breakdown: result.rows };
 });
 
+// Portal-sync manual trigger. Registered below the /api auth gate, so it
+// requires a valid token whenever a password is set — same as the other
+// sync routes. Returns the per-portal outcome recorded in portal_sync_runs.
+contractRoute(contract.portalSyncRun, "portal_sync_failed", async () => {
+  const runs = await runPortalSync("manual");
+  return { runs };
+});
+
 app.listen(env.PORT, () => {
   console.log(`Server listening on http://localhost:${env.PORT}`);
+  // Dormant unless PORTAL_SYNC_ENABLED=true; see services/portal-sync/index.js.
+  startPortalCron();
 });

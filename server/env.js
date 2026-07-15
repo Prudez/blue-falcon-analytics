@@ -62,6 +62,28 @@ const schema = z.object({
   META_APP_ID: optional(z.string().regex(/^\d+$/, "META_APP_ID is the numeric app id")),
   META_APP_SECRET: optional(z.string()),
   FB_PAGE_ID: optional(z.string().regex(/^\d+$/, "FB_PAGE_ID is the numeric Page id")),
+
+  // Portal-sync (sync-integration workstream). Portal LOGIN credentials are
+  // the highest-sensitivity secrets in .env — a leaked portal password
+  // grants full account access, not just read. Server-side only, never
+  // VITE_-prefixed. A portal whose creds are absent is treated as disabled
+  // (reported "skipped"), so all of these are optional.
+  BUYRENTKENYA_EMAIL: optional(z.string()),
+  BUYRENTKENYA_PASSWORD: optional(z.string()),
+  BUYRENTKENYA_AGENCY_ID: optional(z.string()),
+  PROPERTY24_EMAIL: optional(z.string()),
+  PROPERTY24_PASSWORD: optional(z.string()),
+  KEDWELL_EMAIL: optional(z.string()),
+  KEDWELL_PASSWORD: optional(z.string()),
+
+  // Portal-sync scheduling and browser behavior. The cron is OFF unless
+  // PORTAL_SYNC_ENABLED is exactly "true" — keep it off until migration 005
+  // is applied live. Kept as strings; the service reads/validates them.
+  PORTAL_SYNC_ENABLED: optional(z.string()),
+  PORTAL_SYNC_CRON: optional(z.string()),
+  PORTAL_SYNC_REFRESH_DAYS: optional(z.string()),
+  PORTAL_SYNC_HEADLESS: optional(z.string()),
+  PORTAL_SYNC_STORAGE_DIR: optional(z.string()),
 });
 
 const parsed = schema.safeParse(process.env);
