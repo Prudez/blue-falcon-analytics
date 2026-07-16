@@ -42,9 +42,10 @@
 - **The dry-run has not been run.** Phase A's verification is: `POST /api/portal-sync/run` (with auth) returns three `skipped` runs and three `skipped` rows land in `propiq.portal_sync_runs`. Do this after applying 005.
 - **The cron stays off** until 005 is applied. Then set `PORTAL_SYNC_ENABLED=true` to arm it.
 - **Portals confirmed they have NO API** (BuyRentKenya, Property24). This settles Phase B/C: both are **Playwright fetchers**, not REST clients. Kedwell remains parked pending the subscription decision.
-- **The portal emails are now read-only sub-account requests, not API questions** (a user action — I don't send email). Because the fetchers automate a login into each CRM, a scoped read-only sub-login is much safer than automating the master account (portal-sync skill, credentials section). Drafts prepared for BuyRentKenya and Property24; record the send date here when done.
+- **BuyRentKenya offers no read-only tier AND no additional sub-users** (confirmed). So the fetcher must use Blue Falcon's **primary BuyRentKenya login** — the skill's last-resort option. Accepted with mitigations (see §5). `BUYRENTKENYA_EMAIL`/`BUYRENTKENYA_PASSWORD` = the master login.
+- **Property24 email still pending** — same read-only sub-account request as drafted; its answer may differ from BuyRentKenya's. A user action (I don't send email); record the send date and outcome when done.
 - **Playwright is not installed.** Intentional — Phase A needs no browser. Phase B installs it (`npm i playwright -w server` + `npx playwright install chromium`) when the first real fetcher is built.
-- **Schema divergence resolved in favor of 005:** the skill's skeleton assumed `metric_date`, a `raw` column, and a shared `sync_runs` table. Per the brief's "repo wins" rule, `core/db.js` was rewritten against 005 (`captured_at`, `source`, dedicated `portal_sync_runs`, no `raw`). If a future fetcher wants to stash raw HTML snapshots (the skill's selector-debugging aid), that needs a schema change first — 005 has nowhere to put it.
+- **Schema divergence resolved in favor of 005:** the skill's skeleton assumed `metric_date`, a shared `sync_runs` table, and `raw` columns. Per the brief's "repo wins" rule, `core/db.js` was rewritten against 005 (`captured_at`, `source`, dedicated `portal_sync_runs`). The one `raw` piece was re-added in **Phase B via migration 007** (`raw jsonb` on `portal_listing_metrics`), because the scraper's selector-diffing strategy genuinely needs it — a portal-only deviation from the API-based social tables.
 
 ## 5. Decisions and why
 
@@ -53,6 +54,7 @@
 - **Playwright is lazy-imported** so the skipped-only path (Phase A's entire behavior) needs no heavy dependency or browser download.
 - **Portal stubs throw rather than return empty data.** A stub that silently returned `[]` would look like a working fetcher finding no listings; throwing keeps "not built yet" honest in the audit trail.
 - **Build-only, no DB writes this phase** (user's call): all live database steps were deferred to keep the change reviewable and reversible before anything touched production.
+- **BuyRentKenya uses the master login, with mitigations** (no read-only or sub-user tier exists). Mitigations: (1) the fetcher is read-only *by behavior* — it navigates and reads, never clicks a mutating control, enforced as an invariant in `portals/buyrentkenya.js`; (2) the password lives only in `.env` (gitignored) and the session cache in `.storage/` (gitignored); (3) `browser.js` reuses stored cookies so most runs skip the login form, minimizing password-over-the-wire exposure; (4) **operational, not yet automated:** rotate the BuyRentKenya password quarterly and immediately if anyone with server/`.env` access leaves.
 
 ## 6. Next-phase entry points
 

@@ -4,6 +4,14 @@
 // (confirmed), so this automates the agent's OWN CRM login and reads the
 // same analytics the agent sees at /crm/account/listings.
 //
+// CREDENTIALS: BuyRentKenya offers no read-only or sub-user account, so
+// BUYRENTKENYA_EMAIL/PASSWORD are the agency's MASTER login. That makes one
+// invariant non-negotiable: this fetcher is read-only BY BEHAVIOR. It may
+// navigate and read only. Never add a click, form submit, or any action
+// that could edit, delete, re-price, or boost a listing — a selector slip
+// with the master login is destructive, not just a bad read. Login is the
+// only form interaction allowed here.
+//
 // STATUS: first pass, shaped from the portal-sync skill's
 // references/buyrentkenya.md. The login flow, storage-state reuse,
 // pagination, lazy-load handling, and the metric->schema mapping are real.
