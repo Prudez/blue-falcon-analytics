@@ -25,6 +25,15 @@ Two Claude skills define the reusable designs: `social-sync` (TikTok fetcher, CS
 
 Mark phases done as they close. Handoffs live in this folder as `phase-A.md`, `phase-B.md`, and so on, following the phase-handoff skill's template.
 
+### Connector framework milestone track
+
+A second track, started after Phase A, unifies all ingestion behind one connector framework (`services/connectors/`) with a single `sync_runs` audit table. It runs alongside the A–D phases; M3 decides how the two consolidate.
+
+- [x] **M1 — Framework core.** Lifecycle, manager, kedwell stub, `sql/001` applied live. See `m1-connector-framework.md`.
+- [x] **M2 — Meta connectors.** db layer aligned to the live schema; Facebook and Instagram as `ApiConnector` subclasses; trigger routes auth-gated. Code complete; live acceptance run pending. See `m2-meta-connectors.md`.
+- [ ] **M3 — Consolidation and first portal fetcher.** Routes/framework and portal-sync/framework consolidation decisions, then BuyRentKenya as a `BrowserConnector`.
+- [ ] **M4 — Dashboard integration.** Connector runs and health surfaced in the app; `/api/connectors/*` enters the contract.
+
 ## External dependencies gating phases
 
 - TikTok Display API application (scopes `user.info.basic`, `user.info.stats`, `video.list`) filed at developers.tiktok.com; 3 to 7 day review. Gates Phase D. Requires the privacy policy and terms pages live on bluefalconreal.com.

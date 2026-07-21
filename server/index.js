@@ -60,9 +60,6 @@ app.get(contract.health.path, async (req, res) => {
     res.status(503).json(body);
   }
 });
-const connectorManager = buildManager({ pool });
-mountRoutes(app, connectorManager);
-
 function contractRoute(endpoint, errorCode, handler) {
   const method = endpoint.method.toLowerCase();
   app[method](endpoint.path, async (req, res) => {
@@ -133,6 +130,12 @@ app.use("/api", (req, res, next) => {
   });
   res.status(401).json(body);
 });
+
+// Connector-framework manual triggers (POST /api/connectors/run[/:name]).
+// Registered below the gate (M1 open issue 3): token required whenever a
+// password is set, same as every other sync route.
+const connectorManager = buildManager({ pool });
+mountRoutes(app, connectorManager);
 
 // Maps a properties row to the contract's Property shape.
 function toProperty(r) {

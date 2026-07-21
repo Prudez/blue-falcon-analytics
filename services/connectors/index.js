@@ -13,20 +13,19 @@
 const { config } = require('./core/config');
 const { ConnectorManager } = require('./core/manager');
 const { KedwellConnector } = require('./connectors/kedwell.stub');
+const { FacebookConnector } = require('./connectors/facebook');
+const { InstagramConnector } = require('./connectors/instagram');
 
-// M2/M3 connectors get registered here as they land:
-// const { FacebookConnector } = require('./connectors/facebook');
-// const { InstagramConnector } = require('./connectors/instagram');
+// M3 connectors get registered here as they land:
 // const { TikTokConnector } = require('./connectors/tiktok');
 // const { BuyRentKenyaConnector } = require('./connectors/buyrentkenya');
 // const { Property24Connector } = require('./connectors/property24');
 
 function buildManager({ pool, onAlert } = {}) {
   const manager = new ConnectorManager({ config, pool, onAlert });
+  manager.register(FacebookConnector);
+  manager.register(InstagramConnector);
   manager.register(KedwellConnector);
-  // .register(FacebookConnector)
-  // .register(InstagramConnector)
-  // ...
   return manager;
 }
 

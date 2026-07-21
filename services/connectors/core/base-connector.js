@@ -13,8 +13,11 @@ class BaseConnector {
    * @param {'social'|'portal'} opts.sourceType
    * @param {object} opts.config     – validated env object from core/config
    * @param {object} opts.logger     – child logger for this connector
+   * @param {object} [opts.db]       – db layer from core/db, injected by the
+   *   manager. READ-ONLY use inside connectors (e.g. getPlatformLinks to
+   *   match posts to properties). All writes stay in persistFetchResult.
    */
-  constructor({ name, sourceType, config, logger }) {
+  constructor({ name, sourceType, config, logger, db }) {
     if (new.target === BaseConnector) {
       throw new Error('BaseConnector is abstract; extend ApiConnector or BrowserConnector');
     }
@@ -22,6 +25,7 @@ class BaseConnector {
     this.sourceType = sourceType;
     this.config = config;
     this.log = logger;
+    this.db = db ?? null;
   }
 
   /** Return true when this connector has everything it needs to run.

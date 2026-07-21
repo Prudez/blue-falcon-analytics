@@ -19,9 +19,16 @@ const envSchema = z.object({
   CONNECTOR_STORAGE_DIR: z.string().default('./.storage/connectors'),
   CONNECTOR_REFRESH_DAYS: z.coerce.number().int().positive().default(30),
 
-  // --- Meta (Facebook + Instagram) — filled in M2, optional in M1 ---
+  // --- Meta (Facebook + Instagram) — the names the live .env actually
+  // holds since phases 3–4. M2 reads these; the older META_PAGE_ID /
+  // META_IG_BUSINESS_ID / META_LONG_LIVED_TOKEN names were never populated
+  // and are kept only so an .env carrying them does not fail validation.
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
+  META_ACCESS_TOKEN: z.string().optional(), // Instagram token (EAA... or IG...)
+  IG_USER_ID: z.string().optional(), // numeric IG Business id, needed for EAA tokens
+  FB_ACCESS_TOKEN: z.string().optional(), // Facebook-login user token
+  FB_PAGE_ID: z.string().optional(), // picks the Page when the token manages several
   META_PAGE_ID: z.string().optional(),
   META_IG_BUSINESS_ID: z.string().optional(),
   META_LONG_LIVED_TOKEN: z.string().optional(),

@@ -28,6 +28,7 @@ class ConnectorManager {
     const instance = new ConnectorClass({
       config: this.config,
       logger: this.log.child(ConnectorClass.slug),
+      db: this.db, // read-only inside connectors; writes go through persistFetchResult
     });
     this.registry.set(instance.name, instance);
     return this;
