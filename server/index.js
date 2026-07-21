@@ -35,7 +35,10 @@ import {
   LeadStage,
   PriceBand,
 } from "../shared/contract.js";
+import { pool } from "./db.js";
+import connectorsPkg from "../services/connectors/index.js";
 
+const { buildManager, mountRoutes } = connectorsPkg;
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -57,12 +60,9 @@ app.get(contract.health.path, async (req, res) => {
     res.status(503).json(body);
   }
 });
+const connectorManager = buildManager({ pool });
+mountRoutes(app, connectorManager);
 
-// Wraps a route so every failure returns the contract's error shape with a
-// stable machine-readable code, and success bodies are validated against the
-// endpoint's response schema before they leave the process. Non-GET requests
-// have their body validated against the endpoint's request schema first; a
-// bad body is the client's fault and returns 400, not 503.
 function contractRoute(endpoint, errorCode, handler) {
   const method = endpoint.method.toLowerCase();
   app[method](endpoint.path, async (req, res) => {
